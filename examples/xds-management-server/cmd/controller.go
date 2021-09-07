@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/clock"
@@ -25,7 +27,8 @@ type flags struct {
 	GameServersNamespace    string        `name:"game-server-namespace" help:"Namespace under which the game-servers run." default:"gameservers"`
 	GameServersPollInterval time.Duration `name:"game-server-poll-interval" help:"How long to wait in-between checking for game-server updates." default:"1s"`
 	ProxyPollInterval       time.Duration `name:"proxy-interval" help:"How long to wait in-between checking for proxy updates." default:"1s"`
-	AdminPort               int16         `name:"admin-port" help:"Admin server listening port." default:"8080"`
+	AdminPort               int16         `name:"admin-port" help:"Admin server listening port." default:"18090"`
+	LogLevel                string        `name:"log-level" help:"Log level, one of trace, debug, info, warn error, fatal" default:"info"`
 }
 
 type healthCheck struct {
@@ -47,13 +50,36 @@ func (h *healthCheck) CheckHealth(ctx context.Context) error {
 	return nil
 }
 
+func getLogLevel(value string) (log.Level, error) {
+	switch strings.ToLower(value) {
+	case "trace":
+		return log.TraceLevel, nil
+	case "debug":
+		return log.DebugLevel, nil
+	case "info":
+		return log.InfoLevel, nil
+	case "warn":
+		return log.WarnLevel, nil
+	case "error":
+		return log.ErrorLevel, nil
+	case "fatal":
+		return log.FatalLevel, nil
+	default:
+		return 0, fmt.Errorf("invalid log level '%s'", value)
+	}
+}
+
 func main() {
 	var flags flags
 	kong.Parse(&flags)
 
+	logLevel, err := getLogLevel(flags.LogLevel)
+	if err != nil {
+		log.Fatal(err)
+	}
 	logger := &log.Logger{}
 	logger.SetOutput(os.Stdout)
-	logger.SetLevel(log.DebugLevel)
+	logger.SetLevel(logLevel)
 	logger.SetFormatter(&log.JSONFormatter{})
 
 	ctx, shutdown := context.WithCancel(context.Background())
@@ -100,7 +126,7 @@ func main() {
 		logger,
 		clusterCh,
 		filterChainCh,
-		100*time.Millisecond,
+		1000*time.Millisecond,
 		clock.RealClock{})
 	snapshotCache := snapshotUpdater.GetSnapshotCache()
 	go snapshotUpdater.Run(ctx)

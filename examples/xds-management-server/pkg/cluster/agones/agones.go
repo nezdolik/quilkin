@@ -81,7 +81,7 @@ func (p *Provider) Run(ctx context.Context) (<-chan []cluster.Cluster, error) {
 			// The informer shutdown successfully.
 			return
 		}
-		p.logger.WithError(err).Warn("gameServer SharedInformer encountered an error")
+		p.logger.WithError(err).Warn("GameServer SharedInformer encountered an error")
 	})
 	go gameServerInformer.Run(ctx.Done())
 
@@ -144,9 +144,10 @@ func getEndpointsFromStore(
 			"gameserver": gs.Name,
 		})
 
-		if gs.Status.State != agonesv1.GameServerStateAllocated {
-			continue
-		}
+		// TODO: uncomment
+		//if gs.Status.State != agonesv1.GameServerStateAllocated {
+		//	continue
+		//}
 
 		if gs.Status.Address == "" {
 			continue

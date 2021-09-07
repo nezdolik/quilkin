@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"strconv"
 	"time"
@@ -57,12 +58,16 @@ type proxyPod struct {
 // generates filter chain per proxy based on each proxy's pod annotations.
 type Provider struct {
 	logger *log.Logger
-	// podStore contains the current list of all pods.
+	// podNamespace is the namespace to watch for proxy pods.
+	podNamespace string
+	// podStore contains the current list of all proxy pods.
 	podStore cache.Store
 	// proxyRefreshInterval is how often to check pods for updates.
 	proxyRefreshInterval time.Duration
 	// proxyFilterChainCh is the channel on which proxies filter chains are made available.
 	proxyFilterChainCh chan filterchain.ProxyFilterChain
+	// k8sClient is the kubernetes client used by the provider.
+	k8sClient kubernetes.Interface
 	// clock is used for time and timers.
 	clock clock.Clock
 }
@@ -78,20 +83,34 @@ func NewProvider(
 	podInformer := informersv1.NewFilteredPodInformer(k8sClient, podNamespace, 0, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, func(options *metav1.ListOptions) {
 		options.LabelSelector = labelSelectorProxyRole
 	})
+	_ = podInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
+		if err == io.EOF {
+			// The informer shutdown successfully.
+			return
+		}
+		logger.WithError(err).Warn("Pod SharedInformer encountered an error")
+	})
 	go podInformer.Run(ctx.Done())
 
 	return &Provider{
 		logger:               logger,
 		clock:                clock,
+		podNamespace:         podNamespace,
 		podStore:             podInformer.GetStore(),
 		proxyRefreshInterval: proxyRefreshInterval,
 		proxyFilterChainCh:   make(chan filterchain.ProxyFilterChain, 1000),
+		k8sClient:            k8sClient,
 	}, nil
 }
 
 // CheckHealth implements health check.
-func (p *Provider) CheckHealth(_ context.Context) error {
-	// TODO how does informer fail??
+func (p *Provider) CheckHealth(ctx context.Context) error {
+	if _, err := p.k8sClient.
+		CoreV1().
+		Pods(p.podNamespace).
+		List(ctx, metav1.ListOptions{Limit: 1}); err != nil {
+		return fmt.Errorf("k8s filter chain provider failed to list Pod objects: %w", err)
+	}
 	return nil
 }
 
