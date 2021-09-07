@@ -20,11 +20,31 @@ import (
 )
 
 type flags struct {
-	Port                    int16         `name:"int16" help:"Server listening port." default:"18000"`
+	Port                    int16         `name:"port" help:"Server listening port." default:"18000"`
 	ProxyNamespace          string        `name:"proxy-namespace" help:"Namespace under which the proxies run." default:"quilkin"`
 	GameServersNamespace    string        `name:"game-server-namespace" help:"Namespace under which the game-servers run." default:"gameservers"`
 	GameServersPollInterval time.Duration `name:"game-server-poll-interval" help:"How long to wait in-between checking for game-server updates." default:"1s"`
 	ProxyPollInterval       time.Duration `name:"proxy-interval" help:"How long to wait in-between checking for proxy updates." default:"1s"`
+	AdminPort               int16         `name:"admin-port" help:"Admin server listening port." default:"8080"`
+}
+
+type healthCheck struct {
+	clusterProvider     server.HealthCheck
+	filterChainProvider server.HealthCheck
+}
+
+// CheckHealth implements health check using the health checks of sub components.
+func (h *healthCheck) CheckHealth(ctx context.Context) error {
+	for _, err := range []error{
+		h.clusterProvider.CheckHealth(ctx),
+		h.filterChainProvider.CheckHealth(ctx),
+	} {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func main() {
@@ -85,7 +105,16 @@ func main() {
 	snapshotCache := snapshotUpdater.GetSnapshotCache()
 	go snapshotUpdater.Run(ctx)
 
-	srv := server.New(logger, flags.Port, snapshotCache, nil)
+	srv := server.New(
+		logger,
+		flags.Port,
+		snapshotCache,
+		nil,
+		&healthCheck{
+			clusterProvider:     clusterProvider,
+			filterChainProvider: filterChainProvider,
+		},
+		flags.AdminPort)
 	if err := srv.Run(ctx); err != nil {
 		logger.WithError(err).Fatal("failed to start server")
 	}

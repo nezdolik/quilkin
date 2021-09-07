@@ -24,6 +24,9 @@ type Provider interface {
 	// Run returns a channel that the server reads filter chain
 	// updates from.
 	Run(ctx context.Context) <-chan ProxyFilterChain
+
+	// CheckHealth returns an error if the provider implementation is unhealthy.
+	CheckHealth(ctx context.Context) error
 }
 
 // CreateXdsFilter creates an xds filter with the provided proto.

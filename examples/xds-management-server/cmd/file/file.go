@@ -22,6 +22,13 @@ type flags struct {
 	Port   int16  `name:"int16" help:"Server listening port." default:"18000"`
 }
 
+type noHealthCheck struct{}
+
+// CheckHealth is a no-op health check implementation.
+func (h *noHealthCheck) CheckHealth(_ context.Context) error {
+	return nil
+}
+
 func main() {
 	var flags flags
 	kong.Parse(&flags)
@@ -48,7 +55,7 @@ func main() {
 	snapshotCache := snapshotUpdater.GetSnapshotCache()
 	go snapshotUpdater.Run(ctx)
 
-	srv := server.New(logger, flags.Port, snapshotCache, proxyIDCh)
+	srv := server.New(logger, flags.Port, snapshotCache, proxyIDCh, &noHealthCheck{}, 8008)
 	if err := srv.Run(ctx); err != nil {
 		logger.WithError(err).Fatal("failed to start server")
 	}

@@ -27,4 +27,7 @@ type Cluster struct {
 type Provider interface {
 	// Run returns a channel that the server reads cluster updates from.
 	Run(ctx context.Context) (<-chan []Cluster, error)
+
+	// CheckHealth returns an error if the provider implementation is unhealthy.
+	CheckHealth(ctx context.Context) error
 }

@@ -3,6 +3,7 @@ package agones
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	agonesv1 "agones.dev/agones/pkg/apis/agones/v1"
 	agones "agones.dev/agones/pkg/client/clientset/versioned"
 	log "github.com/sirupsen/logrus"
+	k8sv1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -44,6 +46,25 @@ func NewProvider(logger *log.Logger, config Config) (*Provider, error) {
 	}, nil
 }
 
+// CheckHealth implements health check.
+func (p *Provider) CheckHealth(ctx context.Context) error {
+	if _, err := p.agonesClient.
+		AgonesV1().
+		RESTClient().
+		Get().
+		AbsPath("/healthz").
+		DoRaw(ctx); err != nil {
+		return fmt.Errorf("agones cluster provider failed to reach k8s api: %w", err)
+	}
+	if _, err := p.agonesClient.
+		AgonesV1().
+		GameServers(p.config.GameServersNamespace).
+		List(ctx, k8sv1.ListOptions{Limit: 1}); err != nil {
+		return fmt.Errorf("agones cluster provider failed to list GameServers objects: %w", err)
+	}
+	return nil
+}
+
 // Run spawns a goroutine in the background that watches Agones GameServers
 // and exposes them as endpoints via the returned Cluster channel.
 func (p *Provider) Run(ctx context.Context) (<-chan []cluster.Cluster, error) {
@@ -55,6 +76,13 @@ func (p *Provider) Run(ctx context.Context) (<-chan []cluster.Cluster, error) {
 
 	gameServerInformer := cache.NewSharedInformer(gameServerListWatch, &agonesv1.GameServer{}, 0)
 	gameServerStore := gameServerInformer.GetStore()
+	_ = gameServerInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
+		if err == io.EOF {
+			// The informer shutdown successfully.
+			return
+		}
+		p.logger.WithError(err).Warn("gameServer SharedInformer encountered an error")
+	})
 	go gameServerInformer.Run(ctx.Done())
 
 	clusterCh := make(chan []cluster.Cluster)
