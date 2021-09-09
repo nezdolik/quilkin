@@ -2,10 +2,11 @@ package snapshot
 
 import (
 	"context"
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"quilkin.dev/xds-management-server/pkg/metrics"
-	"time"
 
 	"quilkin.dev/xds-management-server/pkg/cluster"
 	"quilkin.dev/xds-management-server/pkg/filterchain"
