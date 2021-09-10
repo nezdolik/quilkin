@@ -11,4 +11,4 @@ COPY pkg/ pkg/
 
 RUN go build -o /server cmd/controller.go
 
-CMD [ "/server" ]
+ENTRYPOINT [ "/server" ]
