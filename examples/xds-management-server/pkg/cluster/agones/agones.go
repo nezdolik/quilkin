@@ -149,7 +149,7 @@ func getEndpointsFromStore(
 		})
 
 		if gs.Status.State != agonesv1.GameServerStateAllocated {
-			//continue
+			continue
 		}
 
 		if gs.Status.Address == "" {
