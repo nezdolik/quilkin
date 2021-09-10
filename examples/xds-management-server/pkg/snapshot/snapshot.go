@@ -2,22 +2,18 @@ package snapshot
 
 import (
 	"context"
-	"fmt"
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"quilkin.dev/xds-management-server/pkg/metrics"
-
 	"quilkin.dev/xds-management-server/pkg/cluster"
 	"quilkin.dev/xds-management-server/pkg/filterchain"
+	"quilkin.dev/xds-management-server/pkg/metrics"
+	"quilkin.dev/xds-management-server/pkg/resources"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/clock"
-
-	"quilkin.dev/xds-management-server/pkg/resources"
 )
 
 var (
@@ -110,7 +106,6 @@ func (u *Updater) Run(ctx context.Context) {
 			}
 		case clusterUpdate = <-u.clusterCh:
 			pendingClusterUpdate = true
-			fmt.Printf("clusterupdate: %v\n", clusterUpdate)
 		case <-updateTicker.C():
 			u.logger.Tracef("Checking for update")
 
@@ -137,8 +132,6 @@ func (u *Updater) Run(ctx context.Context) {
 					continue
 				}
 
-				fmt.Println(snapshot.GetResources(resource.ClusterType))
-				fmt.Println(snapshot.GetResources(resource.ClusterType)["default-quilkin-cluster"])
 				log.WithField("proxy_id", proxyID).Debug("Setting snapshot update")
 				if err := u.snapshotCache.SetSnapshot(proxyID, snapshot); err != nil {
 					snapshotErrorsTotal.Inc()

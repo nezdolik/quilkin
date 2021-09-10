@@ -119,7 +119,6 @@ func runClusterWatch(
 			}
 			prevEndpoints = currEndpoints
 
-			fmt.Printf("curr endpoints: %v\n", currEndpoints)
 			endpoints := make([]cluster.Endpoint, 0)
 			for _, ep := range currEndpoints {
 				endpoints = append(endpoints, ep)
