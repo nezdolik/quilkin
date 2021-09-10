@@ -107,7 +107,7 @@ func TestGetEndpointsFromStoreEndpointInfo(t *testing.T) {
 	endpoints := getEndpointsFromStore(logger, store)
 	require.Len(t, endpoints, 1)
 
-	ep := endpoints[0]
+	ep := endpoints["127.0.0.2:22"]
 
 	require.EqualValues(t, 22, ep.Port)
 	require.EqualValues(t, "127.0.0.2", ep.IP)
@@ -149,8 +149,8 @@ func TestGetEndpointsFromStoreMultipleEndpoints(t *testing.T) {
 	endpoints := getEndpointsFromStore(logger, store)
 	require.Len(t, endpoints, 2)
 
-	require.EqualValues(t, 21, endpoints[0].Port)
-	require.EqualValues(t, 22, endpoints[1].Port)
+	require.EqualValues(t, 21, endpoints["127.0.0.1:21"].Port)
+	require.EqualValues(t, 22, endpoints["127.0.0.1:22"].Port)
 }
 
 func TestGetEndpointsFromStoreIgnoredGameServers(t *testing.T) {

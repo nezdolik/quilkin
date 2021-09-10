@@ -109,7 +109,7 @@ func runClusterWatch(
 	ticker := time.NewTicker(gameServersPollInterval)
 	defer ticker.Stop()
 
-	var prevEndpoints []cluster.Endpoint
+	prevEndpoints := map[string]cluster.Endpoint{}
 	for {
 		select {
 		case <-ticker.C:
@@ -119,9 +119,14 @@ func runClusterWatch(
 			}
 			prevEndpoints = currEndpoints
 
+			fmt.Printf("curr endpoints: %v\n", currEndpoints)
+			endpoints := make([]cluster.Endpoint, 0)
+			for _, ep := range currEndpoints {
+				endpoints = append(endpoints, ep)
+			}
 			clusterCh <- []cluster.Cluster{{
 				Name:      "default-quilkin-cluster",
-				Endpoints: currEndpoints,
+				Endpoints: endpoints,
 			}}
 		case <-ctx.Done():
 			logger.Debug("Exiting cluster watch loop: context cancelled")
@@ -133,10 +138,10 @@ func runClusterWatch(
 func getEndpointsFromStore(
 	logger *log.Logger,
 	gameServerStore cache.Store,
-) []cluster.Endpoint {
+) map[string]cluster.Endpoint {
 	gameServers := gameServerStore.List()
 
-	var endpoints []cluster.Endpoint
+	endpoints := make(map[string]cluster.Endpoint)
 	for i := range gameServers {
 		gs := gameServers[i].(*agonesv1.GameServer)
 
@@ -145,7 +150,7 @@ func getEndpointsFromStore(
 		})
 
 		if gs.Status.State != agonesv1.GameServerStateAllocated {
-			continue
+			//continue
 		}
 
 		if gs.Status.Address == "" {
@@ -167,11 +172,12 @@ func getEndpointsFromStore(
 			}
 		}
 
-		endpoints = append(endpoints, cluster.Endpoint{
+		gsPort := int(getGameServerPort(gsLogger, gs.Status.Ports))
+		endpoints[fmt.Sprintf("%s:%d", gs.Status.Address, gsPort)] = cluster.Endpoint{
 			IP:       gs.Status.Address,
-			Port:     int(getGameServerPort(gsLogger, gs.Status.Ports)),
+			Port:     gsPort,
 			Metadata: metadata,
-		})
+		}
 	}
 
 	return endpoints
