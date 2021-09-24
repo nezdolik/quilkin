@@ -11,4 +11,8 @@ COPY pkg/ pkg/
 
 RUN go build -o /server cmd/controller.go
 
-ENTRYPOINT [ "/server" ]
+FROM alpine:latest
+WORKDIR /app
+COPY --from=0 /server ./
+
+ENTRYPOINT [ "./server" ]
