@@ -113,8 +113,8 @@ func runUpdater(
 			for proxyID := range proxyIDs {
 				if currFilterChain != nil {
 					filterChainCh <- filterchain.ProxyFilterChain{
-						ProxyID:     proxyID,
-						FilterChain: currFilterChain,
+						ProxyID:      proxyID,
+						FilterChains: []*envoylistener.FilterChain{currFilterChain},
 					}
 				}
 			}

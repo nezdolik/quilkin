@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"reflect"
@@ -30,6 +31,7 @@ const (
 	annotationKeyPrefix    = "quilkin.dev/"
 	// Note: Annotations that configure the proxy filter chain must be added to the
 	//  `relevantAnnotations` list for the server to care about them.
+	annotationKeyVersion                = annotationKeyPrefix + "version"
 	annotationKeyDebug                  = annotationKeyPrefix + "debug-packets"
 	annotationKeyRoutingTokenSuffixSize = annotationKeyPrefix + "routing-token-suffix-size"
 	annotationKeyRoutingTokenPrefixSize = annotationKeyPrefix + "routing-token-prefix-size"
@@ -39,6 +41,7 @@ var _ filterchain.Provider = &Provider{}
 
 // relevantAnnotations lists the pod annotations that we care about.
 var relevantAnnotations = []string{
+	annotationKeyVersion,
 	annotationKeyDebug,
 	annotationKeyRoutingTokenSuffixSize,
 	annotationKeyRoutingTokenPrefixSize,
@@ -167,8 +170,10 @@ func (p *Provider) run(ctx context.Context) {
 				}
 
 				p.proxyFilterChainCh <- filterchain.ProxyFilterChain{
-					ProxyID:     proxy.podID,
-					FilterChain: proxyFilterChain,
+					ProxyID: proxy.podID,
+					FilterChains: []*envoylistener.FilterChain{
+						proxyFilterChain,
+					},
 				}
 			}
 		case <-ctx.Done():
@@ -179,6 +184,7 @@ func (p *Provider) run(ctx context.Context) {
 }
 
 func createFilterChainForProxy(podAnnotations map[string]string) (*envoylistener.FilterChain, error) {
+	versionBase64 := base64.StdEncoding.EncodeToString([]byte{uint8(0)})
 	var envoyFilters []*envoylistener.Filter
 
 	// If debug is enabled, then make sure its the first filter in the chain.
@@ -198,7 +204,14 @@ func createFilterChainForProxy(podAnnotations map[string]string) (*envoylistener
 	}
 	envoyFilters = append(envoyFilters, routingFilters...)
 
-	return &envoylistener.FilterChain{Filters: envoyFilters}, nil
+	return &envoylistener.FilterChain{
+		FilterChainMatch: &envoylistener.FilterChainMatch{
+			ApplicationProtocols: []string{
+				versionBase64,
+			},
+		},
+		Filters: envoyFilters,
+	}, nil
 }
 
 func createDebugFilter() (*envoylistener.Filter, error) {

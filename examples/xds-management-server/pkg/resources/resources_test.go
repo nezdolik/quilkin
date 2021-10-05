@@ -132,22 +132,44 @@ func TestGenerateSnapshot(t *testing.T) {
 			}},
 		},
 	}
-	debugFilter, err := filterchain.CreateXdsFilter(filters.DebugFilterName,
-		&debugfilterv1alpha.Debug{
-			Id: &wrapperspb.StringValue{Value: "hello"},
-		})
-	require.NoError(t, err)
-	rateLimitFilter, err := filterchain.CreateXdsFilter(filters.RateLimitFilterName,
-		&ratelimitv1alpha.LocalRateLimit{
-			MaxPackets: 400,
-		})
-	require.NoError(t, err)
+
+	debugFilter := func(t *testing.T, value string) *envoylistener.Filter {
+		filter, err := filterchain.CreateXdsFilter(filters.DebugFilterName,
+			&debugfilterv1alpha.Debug{
+				Id: &wrapperspb.StringValue{Value: value},
+			})
+		require.NoError(t, err)
+
+		return filter
+	}
+	rateLimitFilter := func(t *testing.T, value uint64) *envoylistener.Filter {
+		filter, err := filterchain.CreateXdsFilter(filters.RateLimitFilterName,
+			&ratelimitv1alpha.LocalRateLimit{
+				MaxPackets: value,
+			})
+		require.NoError(t, err)
+
+		return filter
+	}
 
 	snapshot, err := GenerateSnapshot(19, clusters, filterchain.ProxyFilterChain{
 		ProxyID: "proxy-1",
-		FilterChain: &envoylistener.FilterChain{
-			Filters: []*envoylistener.Filter{
-				debugFilter, rateLimitFilter,
+		FilterChains: []*envoylistener.FilterChain{
+			{
+				FilterChainMatch: &envoylistener.FilterChainMatch{
+					ApplicationProtocols: []string{"abc", "xyz"},
+				},
+				Filters: []*envoylistener.Filter{
+					debugFilter(t, "hello"), rateLimitFilter(t, 400),
+				},
+			},
+			{
+				FilterChainMatch: &envoylistener.FilterChainMatch{
+					ApplicationProtocols: []string{"123", "456"},
+				},
+				Filters: []*envoylistener.Filter{
+					debugFilter(t, "world"), rateLimitFilter(t, 500),
+				},
 			},
 		},
 	})
@@ -180,7 +202,14 @@ func TestGenerateSnapshot(t *testing.T) {
 
 	require.Contains(t, filterChain.Resource.String(), filters.DebugFilterName)
 	require.Contains(t, filterChain.Resource.String(), "hello")
+	require.Contains(t, filterChain.Resource.String(), "world")
 
 	require.Contains(t, filterChain.Resource.String(), filters.RateLimitFilterName)
 	require.Contains(t, filterChain.Resource.String(), "max_packets:400")
+	require.Contains(t, filterChain.Resource.String(), "max_packets:500")
+
+	// Check the application protocols field we set versions in.
+	for _, version := range []string{"abc", "xyz", "123", "456"} {
+		require.Contains(t, filterChain.Resource.String(), version)
+	}
 }

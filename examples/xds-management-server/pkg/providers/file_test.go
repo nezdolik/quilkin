@@ -176,14 +176,14 @@ filterchain:
 			expectingClusters := len(tt.wantClusters) > 0
 
 			var clusters []cluster.Cluster
-			var filterChain filterchain.ProxyFilterChain
+			var proxyFilterChain filterchain.ProxyFilterChain
 
 			wg := sync.WaitGroup{}
 
 			if expectingFilterChainUpdate {
 				wg.Add(1)
 				go func() {
-					filterChain = <-filterChainCh
+					proxyFilterChain = <-filterChainCh
 					wg.Done()
 				}()
 			}
@@ -205,10 +205,12 @@ filterchain:
 			select {
 			case <-waitCtx.Done():
 				if expectingFilterChainUpdate {
-					require.NotNil(t, filterChain.FilterChain)
-					require.Len(t, filterChain.FilterChain.Filters, len(tt.wantProxyFilterChain.EachFilterContains))
-					require.EqualValues(t, tt.wantProxyFilterChain.ProxyID, filterChain.ProxyID)
-					for i, fc := range filterChain.FilterChain.Filters {
+					require.NotNil(t, proxyFilterChain.FilterChains)
+					require.Len(t, proxyFilterChain.FilterChains, 1)
+					filterChain := proxyFilterChain.FilterChains[0]
+					require.Len(t, filterChain.Filters, len(tt.wantProxyFilterChain.EachFilterContains))
+					require.EqualValues(t, tt.wantProxyFilterChain.ProxyID, proxyFilterChain.ProxyID)
+					for i, fc := range filterChain.Filters {
 						require.Contains(t, fc.String(), tt.wantProxyFilterChain.EachFilterContains[i])
 					}
 				}

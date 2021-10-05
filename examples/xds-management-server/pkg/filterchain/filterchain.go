@@ -15,8 +15,8 @@ type ProxyFilterChain struct {
 	// this is the same as the XDS node id provided by the proxy
 	// when it first connects.
 	ProxyID string
-	// FilterChain is the filter chain for the associated proxy.
-	FilterChain *envoylistener.FilterChain
+	// FilterChains contains all filter chains for the associated proxy.
+	FilterChains []*envoylistener.FilterChain
 }
 
 // Provider is an abstraction over the source of filter chains.

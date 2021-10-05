@@ -44,8 +44,14 @@ func TestProviderCreateFilterChainForWatchedPods(t *testing.T) {
 	pfc := waitForFilterChainUpdate(t, fakeClock, filterChainCh)
 
 	require.EqualValues(t, "pod-1", pfc.ProxyID)
-	require.Len(t, pfc.FilterChain.Filters, 1)
-	require.Contains(t, pfc.FilterChain.Filters[0].String(), filters.DebugFilterName)
+	require.Len(t, pfc.FilterChains, 1)
+	filterChain := pfc.FilterChains[0]
+
+	require.Len(t, filterChain.Filters, 1)
+	require.Contains(t, filterChain.Filters[0].String(), filters.DebugFilterName)
+
+	// Check version is included.
+	requireV0FilterChain(t, pfc.FilterChains)
 }
 
 func TestProviderCreateProxySpecificFilterChain(t *testing.T) {
@@ -88,8 +94,11 @@ func TestProviderCreateProxySpecificFilterChain(t *testing.T) {
 	require.EqualValues(t, "pod-3", pfc3.ProxyID)
 
 	for _, pfc := range []filterchain.ProxyFilterChain{pfc1, pfc3} {
-		require.Len(t, pfc.FilterChain.Filters, 1)
-		require.Contains(t, pfc.FilterChain.Filters[0].String(), filters.DebugFilterName)
+		require.Len(t, pfc.FilterChains, 1)
+		filterChain := pfc.FilterChains[0]
+		require.Len(t, filterChain.Filters, 1)
+		require.Contains(t, filterChain.Filters[0].String(), filters.DebugFilterName)
+		requireV0FilterChain(t, pfc.FilterChains)
 	}
 
 	// Shutdown
@@ -118,7 +127,8 @@ func TestProviderPushNewFilterChainWhenPodIsUpdated(t *testing.T) {
 
 	// Check that the generated filter chain has the debug filter.
 	pfc := waitForFilterChainUpdate(t, fakeClock, filterChainCh)
-	require.Contains(t, pfc.FilterChain.Filters[0].String(), filters.DebugFilterName)
+	require.Contains(t, pfc.FilterChains[0].Filters[0].String(), filters.DebugFilterName)
+	requireV0FilterChain(t, pfc.FilterChains)
 
 	// Update the pod to turn off debug.
 	pod.Annotations[annotationKeyDebug] = "false"
@@ -130,7 +140,9 @@ func TestProviderPushNewFilterChainWhenPodIsUpdated(t *testing.T) {
 
 	// Check that the generated filter chain has no filter.
 	pfc = waitForFilterChainUpdate(t, fakeClock, filterChainCh)
-	require.Empty(t, pfc.FilterChain.Filters)
+	require.Len(t, pfc.FilterChains, 1)
+	requireV0FilterChain(t, pfc.FilterChains)
+	require.Empty(t, pfc.FilterChains[0].Filters)
 
 	// Shutdown
 	cancel()
@@ -210,11 +222,14 @@ func TestProviderCreateRoutingFilterChain(t *testing.T) {
 			pfc := waitForFilterChainUpdate(t, fakeClock, filterChainCh)
 
 			require.EqualValues(t, "pod-1", pfc.ProxyID)
+			requireV0FilterChain(t, pfc.FilterChains)
+			require.Len(t, pfc.FilterChains, 1)
+			filterChain := pfc.FilterChains[0]
 			// A capture bytes and token router filter should be present
-			require.Len(t, pfc.FilterChain.Filters, 2)
+			require.Len(t, filterChain.Filters, 2)
 
-			captureBytesFilter := pfc.FilterChain.Filters[0]
-			tokenRouterFilter := pfc.FilterChain.Filters[1]
+			captureBytesFilter := filterChain.Filters[0]
+			tokenRouterFilter := filterChain.Filters[1]
 
 			requireFilterContains(t, captureBytesFilter, []string{
 				filters.CaptureBytesFilterName,
@@ -320,4 +335,11 @@ func testLogger() *log.Logger {
 	logger.SetOutput(os.Stdout)
 	logger.SetLevel(log.ErrorLevel)
 	return logger
+}
+
+// Check that all filter chains use v0
+func requireV0FilterChain(t *testing.T, filterChains []*envoylistener.FilterChain) {
+	for _, filterChain := range filterChains {
+		require.EqualValues(t, filterChain.FilterChainMatch.ApplicationProtocols, []string{"AA=="})
+	}
 }

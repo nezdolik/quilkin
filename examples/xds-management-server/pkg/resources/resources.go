@@ -38,7 +38,7 @@ func GenerateSnapshot(
 	}
 
 	listener := &envoylistener.Listener{
-		FilterChains: []*envoylistener.FilterChain{filterChain.FilterChain},
+		FilterChains: filterChain.FilterChains,
 	}
 
 	snapshot := cache.NewSnapshot(

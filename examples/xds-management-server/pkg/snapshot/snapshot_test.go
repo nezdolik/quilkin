@@ -92,8 +92,12 @@ func TestSnapshotUpdaterClusterUpdate(t *testing.T) {
 	proxyIDs := []string{"proxy-1", "proxy-2", "proxy-3"}
 	for _, proxyID := range proxyIDs {
 		filterChainCh <- filterchain.ProxyFilterChain{
-			ProxyID:     proxyID,
-			FilterChain: &envoylistener.FilterChain{},
+			ProxyID: proxyID,
+			FilterChains: []*envoylistener.FilterChain{{
+				FilterChainMatch: &envoylistener.FilterChainMatch{
+					ApplicationProtocols: []string{"AA=="},
+				},
+			}},
 		}
 	}
 
@@ -116,6 +120,7 @@ func TestSnapshotUpdaterClusterUpdate(t *testing.T) {
 		proxySnapshot, err := u.snapshotCache.GetSnapshot(proxyID)
 		require.NoError(t, err)
 		require.NoError(t, proxySnapshot.Consistent())
+		requireV0FilterChainInSnapshot(t, proxySnapshot)
 
 		clusters := proxySnapshot.GetResources(resource.ClusterType)
 		require.Len(t, clusters, 1)
@@ -139,8 +144,12 @@ func TestSnapshotUpdaterProxyFilterChainUpdates(t *testing.T) {
 
 	for _, proxyID := range proxyIDs {
 		filterChainCh <- filterchain.ProxyFilterChain{
-			ProxyID:     proxyID,
-			FilterChain: &envoylistener.FilterChain{},
+			ProxyID: proxyID,
+			FilterChains: []*envoylistener.FilterChain{{
+				FilterChainMatch: &envoylistener.FilterChainMatch{
+					ApplicationProtocols: []string{"AA=="},
+				},
+			}},
 		}
 	}
 
@@ -151,6 +160,7 @@ func TestSnapshotUpdaterProxyFilterChainUpdates(t *testing.T) {
 		proxySnapshot, err := u.snapshotCache.GetSnapshot(proxyID)
 		require.NoError(t, err)
 		require.NoError(t, proxySnapshot.Consistent())
+		requireV0FilterChainInSnapshot(t, proxySnapshot)
 
 		require.EqualValues(t, "1", proxySnapshot.GetVersion(resource.ClusterType))
 		require.EqualValues(t, "1", proxySnapshot.GetVersion(resource.ListenerType))
@@ -175,8 +185,12 @@ func TestSnapshotUpdaterContinuousProxyFilterChainUpdates(t *testing.T) {
 	// Start with empty an filter chain for all proxies.
 	for _, proxyID := range proxyIDs {
 		filterChainCh <- filterchain.ProxyFilterChain{
-			ProxyID:     proxyID,
-			FilterChain: &envoylistener.FilterChain{},
+			ProxyID: proxyID,
+			FilterChains: []*envoylistener.FilterChain{{
+				FilterChainMatch: &envoylistener.FilterChainMatch{
+					ApplicationProtocols: []string{"AA=="},
+				},
+			}},
 		}
 	}
 
@@ -192,17 +206,29 @@ func TestSnapshotUpdaterContinuousProxyFilterChainUpdates(t *testing.T) {
 
 	filterChainCh <- filterchain.ProxyFilterChain{
 		ProxyID: "proxy-2",
-		FilterChain: &envoylistener.FilterChain{
+		FilterChains: []*envoylistener.FilterChain{{
+			FilterChainMatch: &envoylistener.FilterChainMatch{
+				ApplicationProtocols: []string{"AA=="},
+			},
 			Filters: []*envoylistener.Filter{debugFilter},
-		},
+		}},
 	}
 	fakeClock.Step(defaultUpdateInterval)
 	waitForSnapshotUpdate(t, u.snapshotCache, []string{"proxy-2"}, "2")
 
 	// Check that proxy-1 is on v1 while proxy-2 is on v2
 	proxy1Snapshot := getProxySnapshot(t, u.snapshotCache, "proxy-1", "1")
-	require.EqualValues(t, "filter_chains:{}", getDefaultFilterChain(t, proxy1Snapshot).String())
+	requireV0FilterChainInSnapshot(t, proxy1Snapshot)
+	require.EqualValues(t, "filter_chains:{filter_chain_match:{application_protocols:\"AA==\"}}", getDefaultFilterChain(t, proxy1Snapshot).String())
 
 	proxy2Snapshot := getProxySnapshot(t, u.snapshotCache, "proxy-2", "2")
+	requireV0FilterChainInSnapshot(t, proxy2Snapshot)
 	require.Contains(t, getDefaultFilterChain(t, proxy2Snapshot).String(), "hello")
+}
+
+func requireV0FilterChainInSnapshot(t *testing.T, snapshot cache.Snapshot) {
+	listener := snapshot.GetResources(resource.ListenerType)
+	defaultListener, found := listener[""]
+	require.True(t, found)
+	require.Contains(t, defaultListener.String(), "filter_chain_match:{application_protocols:\"AA==\"")
 }
