@@ -24,6 +24,7 @@ import (
 	envoylistener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	"quilkin.dev/xds-management-server/pkg/config"
 	"quilkin.dev/xds-management-server/pkg/cluster"
 	"quilkin.dev/xds-management-server/pkg/filterchain"
 	"quilkin.dev/xds-management-server/pkg/filters"
@@ -148,12 +149,12 @@ func TestGenerateSnapshot(t *testing.T) {
 			}},
 		},
 	}
-	debugFilter, err := filterchain.CreateXdsFilter(filters.DebugFilterName,
+	debugFilter, err := config.CreateXdsFilter(filters.DebugFilterName,
 		&debugfilterv1alpha.Debug{
 			Id: &wrapperspb.StringValue{Value: "hello"},
 		})
 	require.NoError(t, err)
-	rateLimitFilter, err := filterchain.CreateXdsFilter(filters.RateLimitFilterName,
+	rateLimitFilter, err := config.CreateXdsFilter(filters.RateLimitFilterName,
 		&ratelimitv1alpha.LocalRateLimit{
 			MaxPackets: 400,
 		})

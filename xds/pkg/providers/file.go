@@ -17,7 +17,6 @@
 package providers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,10 +24,8 @@ import (
 	"time"
 
 	envoylistener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
-	gogojsonpb "github.com/gogo/protobuf/jsonpb"
-	prototypes "github.com/gogo/protobuf/types"
-	"google.golang.org/protobuf/encoding/protojson"
 	"quilkin.dev/xds-management-server/pkg/cluster"
+	"quilkin.dev/xds-management-server/pkg/config"
 	"quilkin.dev/xds-management-server/pkg/filterchain"
 	"sigs.k8s.io/yaml"
 
@@ -36,13 +33,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
 )
-
-// FilterConfig represents a filter's config.
-type FilterConfig interface{}
-type resources struct {
-	Clusters    []cluster.Cluster
-	FilterChain []FilterConfig
-}
 
 // FileProvider watches a file on disk for resources.
 type FileProvider struct {
@@ -63,7 +53,7 @@ func (p *FileProvider) Run(ctx context.Context, logger *log.Logger) (
 	<-chan []cluster.Cluster, <-chan filterchain.ProxyFilterChain, <-chan error) {
 	clusterCh := make(chan []cluster.Cluster, 10)
 	filterChainCh := make(chan filterchain.ProxyFilterChain, 10)
-	resourcesCh := make(chan resources)
+	resourcesCh := make(chan config.Json)
 
 	errorCh := make(chan error)
 
@@ -89,7 +79,7 @@ func runUpdater(
 	ctx context.Context,
 	logger *log.Logger,
 	proxyIDCh <-chan string,
-	resourcesCh <-chan resources,
+	resourcesCh <-chan config.Json,
 	clusterCh chan<- []cluster.Cluster,
 	filterChainCh chan<- filterchain.ProxyFilterChain,
 ) {
@@ -110,15 +100,15 @@ func runUpdater(
 		select {
 		case proxyID := <-proxyIDCh:
 			proxyIDs[proxyID] = struct{}{}
-		case r := <-resourcesCh:
-			filterChain, err := makeFilterChain(r.FilterChain)
+		case json := <-resourcesCh:
+			filterChain, err := config.FilterChainFromJson(json.Filters)
 			if err != nil {
 				logger.WithError(err).Warn("failed to create filter chain")
 				continue
 			}
 			pendingUpdate = true
 			currFilterChain = filterChain
-			currClusters = r.Clusters
+			currClusters = json.Clusters
 		case <-ticker.C:
 			if !pendingUpdate {
 				continue
@@ -145,7 +135,7 @@ func runConfigFileProvider(
 	ctx context.Context,
 	logger *log.Logger,
 	configFilePath string,
-	resourcesCh chan<- resources,
+	resourcesCh chan<- config.Json,
 	errorCh chan<- error,
 ) {
 	logger = logger.WithFields(log.Fields{
@@ -169,7 +159,7 @@ func runConfigFileProvider(
 			return
 		}
 
-		r := resources{}
+		r := config.Json{}
 		jsonBytes, err := yaml.YAMLToJSON(fileBytes)
 		if err != nil {
 			log.WithError(err).Warn("failed to convert file from YAML to JSON")
@@ -288,38 +278,4 @@ func runConfigFileWatch(
 	if err != nil {
 		errorCh <- err
 	}
-}
-
-func makeFilterChain(
-	filterChainResource []FilterConfig,
-) (*envoylistener.FilterChain, error) {
-	var filters []*envoylistener.Filter
-
-	for _, config := range filterChainResource {
-		configBytes, err := json.Marshal(config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to JSON marshal filter config: %w", err)
-		}
-
-		pbs := &prototypes.Struct{}
-		if err := gogojsonpb.Unmarshal(bytes.NewReader(configBytes), pbs); err != nil {
-			return nil, fmt.Errorf("failed to Unmarshal filter config into protobuf Struct: %w", err)
-		}
-
-		buf := &bytes.Buffer{}
-		if err := (&gogojsonpb.Marshaler{OrigName: true}).Marshal(buf, pbs); err != nil {
-			return nil, fmt.Errorf("failed to marshal filter config protobuf into json: %w", err)
-		}
-
-		filter := &envoylistener.Filter{}
-		if err := protojson.Unmarshal(buf.Bytes(), filter); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal filter config jsonpb into envoy filter proto: %w", err)
-		}
-
-		filters = append(filters, filter)
-	}
-
-	return &envoylistener.FilterChain{
-		Filters: filters,
-	}, nil
 }

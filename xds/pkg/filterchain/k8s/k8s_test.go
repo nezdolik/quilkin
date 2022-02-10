@@ -53,7 +53,8 @@ func TestProviderCreateFilterChainForWatchedPods(t *testing.T) {
 
 	// A new pod is created.
 	pod1 := testPod("pod-1")
-	pod1.Annotations[annotationKeyDebug] = "true"
+
+	pod1.Annotations[annotationKeyConfig] = `{ "filters": [{ "name": "quilkin.extensions.filters.debug.v1alpha1.Debug", "config": { "id": "debug-filter" } }] }`
 
 	fakeWatch.Add(pod1)
 
@@ -74,15 +75,15 @@ func TestProviderCreateProxySpecificFilterChain(t *testing.T) {
 	filterChainCh := p.Run(ctx)
 
 	pod1 := testPod("pod-1")
-	pod1.Annotations[annotationKeyDebug] = "true"
+	pod1.Annotations[annotationKeyConfig] = `{ "filters": [{ "name": "quilkin.extensions.filters.debug.v1alpha1.Debug", "config": { "id": "debug-filter" } }] }`
 	fakeWatch.Add(pod1)
 
 	pod2 := testPod("pod-2")
-	pod2.Annotations[annotationKeyDebug] = "false"
+	pod2.Annotations[annotationKeyConfig] = `{ "filters": [] }`
 	fakeWatch.Add(pod2)
 
 	pod3 := testPod("pod-3")
-	pod3.Annotations[annotationKeyDebug] = "true"
+	pod3.Annotations[annotationKeyConfig] = `{ "filters": [{ "name": "quilkin.extensions.filters.debug.v1alpha1.Debug", "config": { "id": "debug-filter" } }] }`
 	fakeWatch.Add(pod3)
 
 	// Wait for a filter chain to be delivered for each pod
@@ -127,7 +128,7 @@ func TestProviderPushNewFilterChainWhenPodIsUpdated(t *testing.T) {
 
 	// Create the pod with debug enabled.
 	pod := testPod("pod-1")
-	pod.Annotations[annotationKeyDebug] = "true"
+	pod.Annotations[annotationKeyConfig] = `{ "filters": [{ "name": "quilkin.extensions.filters.debug.v1alpha1.Debug", "config": { "id": "debug-filter" } }] }`
 	fakeWatch.Add(pod)
 
 	// Check that the generated filter chain has the debug filter.
@@ -136,7 +137,7 @@ func TestProviderPushNewFilterChainWhenPodIsUpdated(t *testing.T) {
 
 	// Update the pod to turn off debug.
 	updatedPod := testPod("pod-1")
-	updatedPod.Annotations[annotationKeyDebug] = "false"
+	updatedPod.Annotations[annotationKeyConfig] = `{ "filters": [] }`
 	fakeWatch.Add(updatedPod)
 
 	// Check that the generated filter chain has no filter.
@@ -183,18 +184,46 @@ func TestProviderIgnoreNonProxyPods(t *testing.T) {
 func TestProviderCreateRoutingFilterChain(t *testing.T) {
 	tests := []struct {
 		name             string
-		annotation       string
+		config           string
 		expectedStrategy string
 	}{
 		{
-			name:             "prefix",
-			annotation:       annotationKeyRoutingTokenPrefixSize,
+			name: "prefix",
+			config: `{
+                "filters": [
+                    {
+                        "name": "quilkin.extensions.filters.capture_bytes.v1alpha1.CaptureBytes",
+                        "config": {
+                            "strategy": "PREFIX",
+                            "size": 2,
+                            "remove": true
+                        }
+                    },
+                    {
+                        "name": "quilkin.extensions.filters.token_router.v1alpha1.TokenRouter"
+                    }
+                ]
+            }`,
 			expectedStrategy: "", // Prefix is enum 0 so its not explicitly serialised.
 		},
 		{
-			name:             "suffix",
-			annotation:       annotationKeyRoutingTokenSuffixSize,
-			expectedStrategy: "value:Suffix",
+			name: "suffix",
+			config: `{
+                "filters": [
+                    {
+                        "name": "quilkin.extensions.filters.capture_bytes.v1alpha1.CaptureBytes",
+                        "config": {
+                            "strategy": "SUFFIX",
+                            "size": 2,
+                            "remove": true
+                        }
+                    },
+                    {
+                        "name": "quilkin.extensions.filters.token_router.v1alpha1.TokenRouter"
+                    }
+                ]
+            }`,
+			expectedStrategy: "value:SUFFIX",
 		},
 	}
 
@@ -211,7 +240,7 @@ func TestProviderCreateRoutingFilterChain(t *testing.T) {
 
 			// A new pod is created.
 			pod1 := testPod("pod-1")
-			pod1.Annotations[tt.annotation] = "2"
+			pod1.Annotations[annotationKeyConfig] = tt.config
 			fakeWatch.Add(pod1)
 
 			pfc := waitForFilterChainUpdate(t, fakeClock, filterChainCh)
@@ -225,9 +254,6 @@ func TestProviderCreateRoutingFilterChain(t *testing.T) {
 
 			requireFilterContains(t, captureBytesFilter, []string{
 				filters.CaptureBytesFilterName,
-				tt.expectedStrategy,
-				"size:2",
-				"remove:{value:true}",
 			})
 			requireFilterContains(t, tokenRouterFilter, []string{filters.TokenRouterFilterName})
 

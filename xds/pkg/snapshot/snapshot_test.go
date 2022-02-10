@@ -34,6 +34,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	"k8s.io/apimachinery/pkg/util/clock"
 	"quilkin.dev/xds-management-server/pkg/cluster"
+	"quilkin.dev/xds-management-server/pkg/config"
 	"quilkin.dev/xds-management-server/pkg/filterchain"
 	"quilkin.dev/xds-management-server/pkg/filters"
 	debugfilterv1alpha "quilkin.dev/xds-management-server/pkg/filters/debug/v1alpha1"
@@ -230,7 +231,7 @@ func TestSnapshotUpdaterContinuousProxyFilterChainUpdates(t *testing.T) {
 	waitForSnapshotUpdate(t, u.snapshotCache, proxyIDs, "1")
 
 	// Send an updated filter chain to proxy-2
-	debugFilter, err := filterchain.CreateXdsFilter(filters.DebugFilterName,
+	debugFilter, err := config.CreateXdsFilter(filters.DebugFilterName,
 		&debugfilterv1alpha.Debug{
 			Id: &wrapperspb.StringValue{Value: "hello"},
 		})

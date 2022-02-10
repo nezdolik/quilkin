@@ -18,7 +18,6 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -47,9 +46,8 @@ func TestFileProviderRun(t *testing.T) {
 	}()
 
 	filterConfigTestData := fmt.Sprintf(`
-name: my-filter
-typed_config:
-  '@type': %s
+name: %s
+config:
   id: hello
 `, filters.DebugFilterName)
 	filterConfigTestDataYaml := map[interface{}]interface{}{
@@ -150,10 +148,9 @@ clusters:
   endpoints:
   - ip: 127.0.0.2
     port: 8082
-filterchain:
-- name: my-filter
-  typed_config:
-    '@type': %s
+filters:
+- name: %s
+  config:
     id: hello
 `, filters.DebugFilterName),
 			wantClusters: []cluster.Cluster{
@@ -248,86 +245,4 @@ filterchain:
 			require.False(t, more, "received unexpected filter chain update %v", filterChainUpdate)
 		})
 	}
-}
-
-func TestMakeFilterChain(t *testing.T) {
-	dbgFilter := `
-name: my-filter-1
-typed_config:
-  '@type': quilkin.extensions.filters.debug.v1alpha1.Debug
-  id: hello
-`
-	rateLimitFilter := `
-name: my-filter-2
-typed_config:
-  '@type': quilkin.extensions.filters.local_rate_limit.v1alpha1.LocalRateLimit
-  max_packets: 400
-  period: 1s
-`
-	filterConfigs := makeTestFilterConfig(t, []string{dbgFilter, rateLimitFilter})
-
-	got, err := makeFilterChain(filterConfigs)
-	require.NoError(t, err)
-
-	require.EqualValues(t, "", got.Name)
-	require.Len(t, got.Filters, 2)
-
-	require.EqualValues(t, "my-filter-1", got.Filters[0].Name)
-	require.EqualValues(t, "my-filter-2", got.Filters[1].Name)
-
-	require.Contains(t, got.Filters[0].String(), "id:{value:\"hello\"}")
-	require.Contains(t, got.Filters[1].String(), "max_packets:400")
-}
-
-func TestMakeFilterChainInvalid(t *testing.T) {
-	tests := []struct {
-		name   string
-		config string
-	}{
-		{
-			name: "invalid filter config",
-			config: `
-name: my-filter-1
-typed_config:
-  '@type': quilkin.extensions.filters.debug.v1alpha1.Debug
-  notExists: hello
-`,
-		},
-		{
-			name: "missing proto",
-			config: `
-name: my-filter-1
-typed_config:
-  '@type': quilkin.extensions.filters.debug.v1alpha1.Debug2
-  id: hello
-`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := makeFilterChain(makeTestFilterConfig(t, []string{tt.config}))
-			require.Error(t, err)
-		})
-	}
-}
-
-type filterConfig struct {
-	Name        string                 `json:"name"`
-	TypedConfig map[string]interface{} `json:"typed_config"`
-}
-
-func makeTestFilterConfig(t *testing.T, configs []string) []FilterConfig {
-	var filterConfigs []FilterConfig
-
-	for _, config := range configs {
-		jsonBytes, err := yaml.YAMLToJSON([]byte(config))
-		require.NoError(t, err, "failed to convert filter config from yaml to json")
-
-		fc := &filterConfig{}
-		require.NoError(t, json.Unmarshal(jsonBytes, fc), "failed to unmarshal test data filter config")
-
-		filterConfigs = append(filterConfigs, fc)
-	}
-
-	return filterConfigs
 }
