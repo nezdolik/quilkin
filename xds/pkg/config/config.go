@@ -23,7 +23,6 @@ import (
 	envoylistener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/ptypes/known/any"
 	"google.golang.org/protobuf/types/known/structpb"
 	"quilkin.dev/xds-management-server/pkg/cluster"
 )
@@ -73,7 +72,7 @@ func FilterChainFromJson(filters []Filter) (*envoylistener.FilterChain, error) {
     for _, filter := range filters {
         var filter_instance *envoylistener.Filter
         if filter.Config != nil {
-            value, err := anypb.NewStruct(*filter.Config)
+            value, err := structpb.NewStruct(*filter.Config)
 
             if err != nil {
                 return nil, err
@@ -106,15 +105,21 @@ func FilterChainFromJson(filters []Filter) (*envoylistener.FilterChain, error) {
 
 // createXdsFilter creates an xds filter with the provided proto.
 func CreateXdsFilter(name string, filter proto.Message) (*envoylistener.Filter, error) {
-	filterProto, err := anypb.New(filter)
+    value, err := proto.Marshal(filter)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal %s filter to protobuf: %w", name, err)
 	}
 
+	any := &anypb.Any{
+        TypeUrl: name,
+        Value: value,
+    }
+
 	return &envoylistener.Filter{
 		Name: name,
 		ConfigType: &envoylistener.Filter_TypedConfig{
-			TypedConfig: filterProto,
+			TypedConfig: any,
 		},
 	}, nil
 }

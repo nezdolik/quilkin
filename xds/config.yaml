@@ -7,7 +7,10 @@ clusters:
       'quilkin.dev':
          tokens:
          - "MXg3aWp5Ng=="
-filterchain:
+filters:
 - name: quilkin.extensions.filters.debug.v1alpha1.Debug
   config:
     id: hello
+- name: quilkin.extensions.filters.compress.v1alpha1.Compress
+  config:
+      on_read: COMPRESS
