@@ -54,6 +54,7 @@ impl ListenerManagerArgs {
 }
 
 impl FilterManager {
+    #[tracing::instrument(skip(self), level = "info")]
     fn update(&mut self, filter_chain: Arc<FilterChain>) {
         self.filter_chain = filter_chain;
     }
@@ -94,13 +95,14 @@ impl FilterManager {
         mut filter_chain_updates_rx: mpsc::Receiver<Arc<FilterChain>>,
         mut shutdown_rx: watch::Receiver<()>,
     ) {
+        tracing::info!("Spawning updater");
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     update = filter_chain_updates_rx.recv() => {
                         match update {
                             Some(filter_chain) => {
-                                tracing::debug!("Received a filter chain update.");
+                                tracing::info!("Received a filter chain update.");
                                 filter_manager.write().update(filter_chain);
                             }
                             None => {
