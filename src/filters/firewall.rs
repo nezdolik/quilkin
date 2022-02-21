@@ -54,7 +54,7 @@ impl FilterFactory for FirewallFactory {
             .require_config(args.config)?
             .deserialize::<Config, ProtoConfig>(self.name())?;
 
-        let filter = Firewall::new(config, Metrics::new(&args.metrics_registry)?);
+        let filter = Firewall::new(config, Metrics::new()?);
         Ok(FilterInstance::new(
             config_json,
             Box::new(filter) as Box<dyn Filter>,
@@ -144,7 +144,6 @@ impl Filter for Firewall {
 }
 #[cfg(test)]
 mod tests {
-    use prometheus::Registry;
     use std::net::Ipv4Addr;
 
     use crate::endpoint::{Endpoint, Endpoints, UpstreamEndpoints};
@@ -157,7 +156,7 @@ mod tests {
     #[traced_test]
     fn read() {
         let firewall = Firewall {
-            metrics: Metrics::new(&Registry::default()).unwrap(),
+            metrics: Metrics::new().unwrap(),
             on_read: vec![Rule {
                 action: Action::Allow,
                 source: "192.168.75.0/24".parse().unwrap(),
@@ -199,7 +198,7 @@ mod tests {
     #[test]
     fn write() {
         let firewall = Firewall {
-            metrics: Metrics::new(&Registry::default()).unwrap(),
+            metrics: Metrics::new().unwrap(),
             on_read: vec![],
             on_write: vec![Rule {
                 action: Action::Allow,

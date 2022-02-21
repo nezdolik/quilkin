@@ -100,7 +100,7 @@ impl FilterFactory for CaptureFactory {
         let (config_json, config) = self
             .require_config(args.config)?
             .deserialize::<Config, proto::Capture>(self.name())?;
-        let filter = Capture::new(config, Metrics::new(&args.metrics_registry)?);
+        let filter = Capture::new(config, Metrics::new()?);
         Ok(FilterInstance::new(
             config_json,
             Box::new(filter) as Box<dyn Filter>,
@@ -112,7 +112,6 @@ impl FilterFactory for CaptureFactory {
 mod tests {
     use std::sync::Arc;
 
-    use prometheus::Registry;
     use serde_yaml::{Mapping, Value as YamlValue};
 
     use crate::{
@@ -130,7 +129,7 @@ mod tests {
     const TOKEN_KEY: &str = "TOKEN";
 
     fn capture_bytes(config: Config) -> Capture {
-        Capture::new(config, Metrics::new(&Registry::default()).unwrap())
+        Capture::new(config, Metrics::new().unwrap())
     }
 
     #[test]
@@ -154,10 +153,7 @@ mod tests {
         );
 
         let filter = factory
-            .create_filter(CreateFilterArgs::fixed(
-                Registry::default(),
-                Some(YamlValue::Mapping(map)),
-            ))
+            .create_filter(CreateFilterArgs::fixed(Some(YamlValue::Mapping(map))))
             .unwrap()
             .filter;
         assert_end_strategy(filter.as_ref(), TOKEN_KEY, true);
@@ -177,10 +173,7 @@ mod tests {
         });
 
         let filter = factory
-            .create_filter(CreateFilterArgs::fixed(
-                Registry::default(),
-                Some(YamlValue::Mapping(map)),
-            ))
+            .create_filter(CreateFilterArgs::fixed(Some(YamlValue::Mapping(map))))
             .unwrap()
             .filter;
         assert_end_strategy(filter.as_ref(), CAPTURED_BYTES, false);
@@ -195,10 +188,7 @@ mod tests {
             YamlValue::String("WRONG".into()),
         );
 
-        let result = factory.create_filter(CreateFilterArgs::fixed(
-            Registry::default(),
-            Some(YamlValue::Mapping(map)),
-        ));
+        let result = factory.create_filter(CreateFilterArgs::fixed(Some(YamlValue::Mapping(map))));
         assert!(result.is_err(), "Should be an error");
     }
 
@@ -253,7 +243,7 @@ mod tests {
 
     #[test]
     fn regex_capture() {
-        let metrics = Metrics::new(&Registry::default()).unwrap();
+        let metrics = Metrics::new().unwrap();
         let end = Regex {
             pattern: regex::bytes::Regex::new(".{3}$").unwrap(),
         };
@@ -265,7 +255,7 @@ mod tests {
 
     #[test]
     fn end_capture() {
-        let metrics = Metrics::new(&Registry::default()).unwrap();
+        let metrics = Metrics::new().unwrap();
         let mut end = Suffix {
             size: 3,
             remove: false,
@@ -284,7 +274,7 @@ mod tests {
 
     #[test]
     fn beginning_capture() {
-        let metrics = Metrics::new(&Registry::default()).unwrap();
+        let metrics = Metrics::new().unwrap();
         let mut beg = Prefix {
             size: 3,
             remove: false,

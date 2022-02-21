@@ -16,7 +16,6 @@
 
 use std::{collections::HashSet, convert::TryInto, marker::PhantomData, sync::Arc};
 
-use prometheus::Registry;
 use tonic::transport::Endpoint as TonicEndpoint;
 
 use crate::config::{Config, ManagementServer, Proxy, Source, ValidationError, ValueInvalidArgs};
@@ -94,7 +93,7 @@ pub struct Builder<V> {
 
 impl From<Arc<Config>> for Builder<PendingValidation> {
     fn from(config: Arc<Config>) -> Self {
-        let metrics = Arc::new(Metrics::new(Registry::default()));
+        let metrics = Arc::new(Metrics::new());
         let health = Health::new();
         let admin = ProxyAdmin::new(config.admin.address, metrics.clone(), health);
         Builder {
@@ -107,7 +106,7 @@ impl From<Arc<Config>> for Builder<PendingValidation> {
 }
 
 impl ValidatedConfig {
-    fn validate(config: Arc<Config>, metrics: &Metrics) -> Result<Self, Error> {
+    fn validate(config: Arc<Config>) -> Result<Self, Error> {
         let validated_source = match &config.source {
             Source::Static {
                 filters,
@@ -129,10 +128,7 @@ impl ValidatedConfig {
                     .ok_or_else(|| ValidationError::EmptyList("static.endpoints".into()))?;
 
                 ValidatedSource::Static {
-                    filter_chain: Arc::new(FilterChain::try_create(
-                        filters.clone(),
-                        &metrics.registry,
-                    )?),
+                    filter_chain: Arc::new(FilterChain::try_create(filters.clone())?),
                     endpoints,
                 }
             }
@@ -198,7 +194,7 @@ impl Builder<PendingValidation> {
 
     // Validates the builder's config and filter configurations.
     pub fn validate(self) -> Result<Builder<Validated>, Error> {
-        let validated_config = ValidatedConfig::validate(self.config.clone(), &self.metrics)?;
+        let validated_config = ValidatedConfig::validate(self.config.clone())?;
 
         Ok(Builder {
             config: self.config,
@@ -213,12 +209,10 @@ impl Builder<Validated> {
     pub fn build(self) -> Server {
         Server {
             config: Arc::new(self.validation_status.0),
-            proxy_metrics: ProxyMetrics::new(&self.metrics.registry)
-                .expect("proxy metrics should be setup properly"),
-            session_metrics: SessionMetrics::new(&self.metrics.registry)
+            proxy_metrics: ProxyMetrics::new().expect("proxy metrics should be setup properly"),
+            session_metrics: SessionMetrics::new()
                 .expect("session metrics should be setup properly"),
             admin: self.admin,
-            metrics: self.metrics,
         }
     }
 }

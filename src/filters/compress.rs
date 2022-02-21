@@ -162,7 +162,7 @@ impl FilterFactory for CompressFactory {
         let (config_json, config) = self
             .require_config(args.config)?
             .deserialize::<Config, ProtoConfig>(self.name())?;
-        let filter = Compress::new(config, Metrics::new(&args.metrics_registry)?);
+        let filter = Compress::new(config, Metrics::new()?);
         Ok(FilterInstance::new(
             config_json,
             Box::new(filter) as Box<dyn Filter>,
@@ -174,7 +174,6 @@ impl FilterFactory for CompressFactory {
 mod tests {
     use std::convert::TryFrom;
 
-    use prometheus::Registry;
     use serde_yaml::{Mapping, Value};
     use tracing_test::traced_test;
 
@@ -292,10 +291,7 @@ mod tests {
             Value::String("COMPRESS".into()),
         );
         let filter = factory
-            .create_filter(CreateFilterArgs::fixed(
-                Registry::default(),
-                Some(Value::Mapping(map)),
-            ))
+            .create_filter(CreateFilterArgs::fixed(Some(Value::Mapping(map))))
             .expect("should create a filter")
             .filter;
         assert_downstream(filter.as_ref());
@@ -315,7 +311,7 @@ mod tests {
             Value::String("COMPRESS".into()),
         );
         let config = Value::Mapping(map);
-        let args = CreateFilterArgs::fixed(Registry::default(), Some(config));
+        let args = CreateFilterArgs::fixed(Some(config));
 
         let filter = factory
             .create_filter(args)
@@ -332,7 +328,7 @@ mod tests {
                 on_read: Action::Compress,
                 on_write: Action::Decompress,
             },
-            Metrics::new(&Registry::default()).unwrap(),
+            Metrics::new().unwrap(),
         );
         let expected = contents_fixture();
 
@@ -396,7 +392,7 @@ mod tests {
                 on_read: Action::Decompress,
                 on_write: Action::Compress,
             },
-            Metrics::new(&Registry::default()).unwrap(),
+            Metrics::new().unwrap(),
         );
 
         let (expected, compressed) = assert_downstream(&compress);
@@ -424,7 +420,7 @@ mod tests {
                 on_read: Action::Compress,
                 on_write: Action::Decompress,
             },
-            Metrics::new(&Registry::default()).unwrap(),
+            Metrics::new().unwrap(),
         );
 
         let write_response = compression.write(WriteContext::new(
@@ -444,7 +440,7 @@ mod tests {
                 on_read: Action::Decompress,
                 on_write: Action::Compress,
             },
-            Metrics::new(&Registry::default()).unwrap(),
+            Metrics::new().unwrap(),
         );
 
         let read_response = compression.read(ReadContext::new(
@@ -475,7 +471,7 @@ mod tests {
                 on_read: Action::default(),
                 on_write: Action::default(),
             },
-            Metrics::new(&Registry::default()).unwrap(),
+            Metrics::new().unwrap(),
         );
 
         let read_response = compression.read(ReadContext::new(

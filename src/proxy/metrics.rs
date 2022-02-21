@@ -15,16 +15,17 @@
  */
 
 use hyper::{Body, Response, StatusCode};
-use prometheus::{Encoder, Registry, TextEncoder};
+use prometheus::{Encoder, TextEncoder};
 
 /// Metrics contains metrics configuration for the server.
 #[derive(Clone)]
 pub struct Metrics {
-    pub(crate) registry: Registry,
+    pub(crate) registry: &'static prometheus::Registry,
 }
 
 impl Metrics {
-    pub fn new(registry: Registry) -> Self {
+    pub fn new() -> Self {
+        let registry = crate::metrics::registry();
         Metrics { registry }
     }
 
@@ -57,13 +58,12 @@ impl Metrics {
 #[cfg(test)]
 mod tests {
     use hyper::StatusCode;
-    use prometheus::Registry;
 
     use crate::proxy::Metrics;
 
     #[tokio::test]
     async fn collect_metrics() {
-        let metrics = Metrics::new(Registry::default());
+        let metrics = Metrics::new();
         let response = metrics.collect_metrics();
         assert_eq!(response.status(), StatusCode::OK);
     }

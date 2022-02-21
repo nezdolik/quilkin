@@ -87,7 +87,7 @@ impl FilterFactory for TokenRouterFactory {
                     .map(|config_json| (config_json, config))
             })?;
 
-        let filter = TokenRouter::new(config, Metrics::new(&args.metrics_registry)?);
+        let filter = TokenRouter::new(config, Metrics::new()?);
 
         Ok(FilterInstance::new(
             config_json,
@@ -179,7 +179,6 @@ mod tests {
     use std::ops::Deref;
     use std::sync::Arc;
 
-    use prometheus::Registry;
     use serde_yaml::Mapping;
 
     use crate::endpoint::{Endpoint, Endpoints, Metadata};
@@ -196,7 +195,7 @@ mod tests {
     const TOKEN_KEY: &str = "TOKEN";
 
     fn router(config: Config) -> TokenRouter {
-        TokenRouter::new(config, Metrics::new(&Registry::default()).unwrap())
+        TokenRouter::new(config, Metrics::new().unwrap())
     }
 
     #[test]
@@ -243,10 +242,9 @@ mod tests {
         );
 
         let filter = factory
-            .create_filter(CreateFilterArgs::fixed(
-                Registry::default(),
-                Some(serde_yaml::Value::Mapping(map)),
-            ))
+            .create_filter(CreateFilterArgs::fixed(Some(serde_yaml::Value::Mapping(
+                map,
+            ))))
             .unwrap()
             .filter;
         let mut ctx = new_ctx();
@@ -263,10 +261,9 @@ mod tests {
         let map = Mapping::new();
 
         let filter = factory
-            .create_filter(CreateFilterArgs::fixed(
-                Registry::default(),
-                Some(serde_yaml::Value::Mapping(map)),
-            ))
+            .create_filter(CreateFilterArgs::fixed(Some(serde_yaml::Value::Mapping(
+                map,
+            ))))
             .unwrap()
             .filter;
         let mut ctx = new_ctx();
@@ -282,7 +279,7 @@ mod tests {
         let factory = TokenRouterFactory::new();
 
         let filter = factory
-            .create_filter(CreateFilterArgs::fixed(Registry::default(), None))
+            .create_filter(CreateFilterArgs::fixed(None))
             .unwrap()
             .filter;
         let mut ctx = new_ctx();
