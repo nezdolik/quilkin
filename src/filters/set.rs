@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::iter::FromIterator;
+use std::{iter::FromIterator, sync::Arc};
 
 use crate::filters::{self, DynFilterFactory};
 
@@ -22,10 +22,10 @@ use crate::filters::{self, DynFilterFactory};
 use crate::filters::{FilterFactory, FilterRegistry};
 
 /// A map of [`FilterFactory::name`]s to [`DynFilterFactory`] values.
-pub type FilterMap = std::collections::HashMap<&'static str, DynFilterFactory>;
+pub type FilterMap = std::collections::HashMap<&'static str, Arc<DynFilterFactory>>;
 
 /// A set of filters to be registered with a [`FilterRegistry`].
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct FilterSet(FilterMap);
 
 impl FilterSet {
@@ -73,6 +73,17 @@ impl FilterSet {
     pub fn with(filters: impl IntoIterator<Item = DynFilterFactory>) -> Self {
         Self::from_iter(filters)
     }
+
+    /// Gets the factory for the specified [`FilterFactory`], if present.
+    pub fn get(&self, key: &str) -> Option<&Arc<DynFilterFactory>> {
+        self.0.get(key)
+    }
+
+    /// Inserts factory for the specified [`FilterFactory`], returning any
+    /// previous filter stored at that location if present.
+    pub fn insert(&mut self, value: DynFilterFactory) -> Option<Arc<DynFilterFactory>> {
+        self.0.insert(value.name(), Arc::new(value))
+    }
 }
 
 impl<I: Iterator<Item = DynFilterFactory>> From<I> for FilterSet {
@@ -81,12 +92,18 @@ impl<I: Iterator<Item = DynFilterFactory>> From<I> for FilterSet {
     }
 }
 
+impl From<FilterSet> for FilterMap {
+    fn from(set: FilterSet) -> Self {
+        set.0
+    }
+}
+
 impl FromIterator<DynFilterFactory> for FilterSet {
     fn from_iter<I: IntoIterator<Item = DynFilterFactory>>(iter: I) -> Self {
         let mut set = Self(Default::default());
 
         for factory in iter {
-            set.0.insert(factory.name(), factory);
+            set.0.insert(factory.name(), Arc::new(factory));
         }
 
         set
@@ -95,7 +112,7 @@ impl FromIterator<DynFilterFactory> for FilterSet {
 
 impl IntoIterator for FilterSet {
     type IntoIter = IntoIter;
-    type Item = DynFilterFactory;
+    type Item = Arc<DynFilterFactory>;
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
@@ -106,11 +123,11 @@ impl IntoIterator for FilterSet {
 
 /// Iterator over a set of [`DynFilterFactory`]s.
 pub struct IntoIter {
-    inner: std::collections::hash_map::IntoIter<&'static str, DynFilterFactory>,
+    inner: std::collections::hash_map::IntoIter<&'static str, Arc<DynFilterFactory>>,
 }
 
 impl Iterator for IntoIter {
-    type Item = DynFilterFactory;
+    type Item = Arc<DynFilterFactory>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(_, v)| v)

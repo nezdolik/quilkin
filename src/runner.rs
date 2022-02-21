@@ -21,7 +21,7 @@ use tracing::{debug, info, span, Level};
 
 use crate::{
     config::Config,
-    filters::{DynFilterFactory, FilterRegistry, FilterSet},
+    filters::{DynFilterFactory, FilterRegistry},
     proxy::Builder,
     Result,
 };
@@ -30,7 +30,7 @@ use crate::{
 use crate::filters::FilterFactory;
 
 /// Calls [`run`] with the [`Config`] found by [`Config::find`] and the
-/// default [`FilterSet`].
+/// default [`FilterSet`][crate::filters::FilterSet].
 pub async fn run(filter_factories: impl IntoIterator<Item = DynFilterFactory>) -> Result<()> {
     run_with_config(Config::find(None).map(Arc::new)?, filter_factories).await
 }
@@ -44,12 +44,9 @@ pub async fn run_with_config(
     let span = span!(Level::INFO, "source::run");
     let _enter = span.enter();
 
-    let server = Builder::from(config)
-        .with_filter_registry(FilterRegistry::new(FilterSet::default_with(
-            filter_factories.into_iter(),
-        )))
-        .validate()?
-        .build();
+    FilterRegistry::register(filter_factories);
+
+    let server = Builder::from(config).validate()?.build();
 
     #[cfg(target_os = "linux")]
     let mut sig_term_fut = signal::unix::signal(signal::unix::SignalKind::terminate())?;

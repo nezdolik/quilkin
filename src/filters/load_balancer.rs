@@ -72,7 +72,7 @@ mod tests {
         endpoint::{Endpoint, EndpointAddress, Endpoints},
         filters::{
             load_balancer::LoadBalancerFilterFactory, CreateFilterArgs, Filter, FilterFactory,
-            FilterRegistry, ReadContext,
+            ReadContext,
         },
     };
     use prometheus::Registry;
@@ -81,7 +81,6 @@ mod tests {
         let factory = LoadBalancerFilterFactory;
         factory
             .create_filter(CreateFilterArgs::fixed(
-                FilterRegistry::default(),
                 Registry::default(),
                 Some(serde_yaml::from_str(config).unwrap()),
             ))

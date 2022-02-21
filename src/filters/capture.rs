@@ -118,7 +118,7 @@ mod tests {
     use crate::{
         endpoint::{Endpoint, Endpoints},
         filters::metadata::CAPTURED_BYTES,
-        filters::{prelude::*, FilterRegistry},
+        filters::prelude::*,
         metadata::Value,
         test_utils::assert_write_no_change,
     };
@@ -155,7 +155,6 @@ mod tests {
 
         let filter = factory
             .create_filter(CreateFilterArgs::fixed(
-                FilterRegistry::default(),
                 Registry::default(),
                 Some(YamlValue::Mapping(map)),
             ))
@@ -179,7 +178,6 @@ mod tests {
 
         let filter = factory
             .create_filter(CreateFilterArgs::fixed(
-                FilterRegistry::default(),
                 Registry::default(),
                 Some(YamlValue::Mapping(map)),
             ))
@@ -198,7 +196,6 @@ mod tests {
         );
 
         let result = factory.create_filter(CreateFilterArgs::fixed(
-            FilterRegistry::default(),
             Registry::default(),
             Some(YamlValue::Mapping(map)),
         ));

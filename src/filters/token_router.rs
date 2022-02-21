@@ -190,8 +190,7 @@ mod tests {
         default_metadata_key, Config, Metrics, ProtoConfig, TokenRouter, TokenRouterFactory,
     };
     use crate::filters::{
-        metadata::CAPTURED_BYTES, CreateFilterArgs, Filter, FilterFactory, FilterRegistry,
-        ReadContext,
+        metadata::CAPTURED_BYTES, CreateFilterArgs, Filter, FilterFactory, ReadContext,
     };
 
     const TOKEN_KEY: &str = "TOKEN";
@@ -245,7 +244,6 @@ mod tests {
 
         let filter = factory
             .create_filter(CreateFilterArgs::fixed(
-                FilterRegistry::default(),
                 Registry::default(),
                 Some(serde_yaml::Value::Mapping(map)),
             ))
@@ -266,7 +264,6 @@ mod tests {
 
         let filter = factory
             .create_filter(CreateFilterArgs::fixed(
-                FilterRegistry::default(),
                 Registry::default(),
                 Some(serde_yaml::Value::Mapping(map)),
             ))
@@ -285,11 +282,7 @@ mod tests {
         let factory = TokenRouterFactory::new();
 
         let filter = factory
-            .create_filter(CreateFilterArgs::fixed(
-                FilterRegistry::default(),
-                Registry::default(),
-                None,
-            ))
+            .create_filter(CreateFilterArgs::fixed(Registry::default(), None))
             .unwrap()
             .filter;
         let mut ctx = new_ctx();
