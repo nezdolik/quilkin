@@ -20,7 +20,7 @@ use prometheus::{Encoder, TextEncoder};
 /// Metrics contains metrics configuration for the server.
 #[derive(Clone)]
 pub struct Metrics {
-    pub(crate) registry: &'static prometheus::Registry,
+    registry: &'static prometheus::Registry,
 }
 
 impl Metrics {
