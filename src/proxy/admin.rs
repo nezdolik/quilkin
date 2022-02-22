@@ -23,7 +23,7 @@ use hyper::{Body, Method, Request, Response, Server as HyperServer, StatusCode};
 use tokio::sync::watch;
 
 use crate::cluster::cluster_manager::SharedClusterManager;
-use crate::filters::manager::SharedFilterManager;
+use crate::filters::SharedFilterChain;
 use crate::proxy::{config_dump, Health, Metrics};
 
 pub struct Admin {
@@ -38,7 +38,7 @@ struct HandleRequestArgs {
     metrics: Arc<Metrics>,
     health: Arc<Health>,
     cluster_manager: SharedClusterManager,
-    filter_manager: SharedFilterManager,
+    filter_manager: SharedFilterChain,
 }
 
 impl Admin {
@@ -53,7 +53,7 @@ impl Admin {
     pub(crate) fn run(
         &self,
         cluster_manager: SharedClusterManager,
-        filter_manager: SharedFilterManager,
+        filter_manager: SharedFilterChain,
         mut shutdown_rx: watch::Receiver<()>,
     ) {
         tracing::info!(address = %self.addr, "Starting admin endpoint");

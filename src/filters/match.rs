@@ -1,10 +1,6 @@
 mod config;
 
-use crate::{
-    config::ConfigType,
-    filters::prelude::*,
-    metadata::Value,
-};
+use crate::{config::ConfigType, filters::prelude::*, metadata::Value};
 
 pub use config::Config;
 
@@ -22,13 +18,9 @@ struct ConfigInstance {
 }
 
 impl ConfigInstance {
-    fn new(
-        config: config::DirectionalConfig,
-    ) -> Result<Self, Error> {
+    fn new(config: config::DirectionalConfig) -> Result<Self, Error> {
         let map_to_instance = |filter: &str, config_type: Option<ConfigType>| {
-            let args = CreateFilterArgs::new(
-                config_type,
-            );
+            let args = CreateFilterArgs::new(config_type);
 
             crate::filters::FilterRegistry::get(filter, args)
         };
@@ -56,21 +48,15 @@ struct MatchInstance {
 }
 
 impl MatchInstance {
-    fn new(
-        config: Config,
-    ) -> Result<Self, Error> {
+    fn new(config: Config) -> Result<Self, Error> {
         let on_read_filters = config
             .on_read
-            .map(|config| {
-                ConfigInstance::new(config)
-            })
+            .map(|config| ConfigInstance::new(config))
             .transpose()?;
 
         let on_write_filters = config
             .on_write
-            .map(|config| {
-                ConfigInstance::new(config)
-            })
+            .map(|config| ConfigInstance::new(config))
             .transpose()?;
 
         if on_read_filters.is_none() && on_write_filters.is_none() {

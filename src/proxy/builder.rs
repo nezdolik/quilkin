@@ -18,16 +18,18 @@ use std::{collections::HashSet, convert::TryInto, marker::PhantomData, sync::Arc
 
 use tonic::transport::Endpoint as TonicEndpoint;
 
-use crate::config::{Config, ManagementServer, Proxy, Source, ValidationError, ValueInvalidArgs};
+use crate::config::{
+    self, Config, ManagementServer, Proxy, Source, ValidationError, ValueInvalidArgs,
+};
 use crate::endpoint::Endpoints;
-use crate::filters::{chain::Error as FilterChainError, FilterChain};
+use crate::filters::chain::Error as FilterChainError;
 use crate::proxy::server::metrics::Metrics as ProxyMetrics;
 use crate::proxy::sessions::metrics::Metrics as SessionMetrics;
 use crate::proxy::{Admin as ProxyAdmin, Health, Metrics, Server};
 
 pub(super) enum ValidatedSource {
     Static {
-        filter_chain: Arc<FilterChain>,
+        filter_chain: Vec<config::Filter>,
         endpoints: Endpoints,
     },
     Dynamic {
@@ -128,7 +130,7 @@ impl ValidatedConfig {
                     .ok_or_else(|| ValidationError::EmptyList("static.endpoints".into()))?;
 
                 ValidatedSource::Static {
-                    filter_chain: Arc::new(FilterChain::try_create(filters.clone())?),
+                    filter_chain: filters.to_owned(),
                     endpoints,
                 }
             }
