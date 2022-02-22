@@ -29,10 +29,8 @@ use crate::xds::ads_client::ClusterUpdate;
 
 use super::metrics::Metrics;
 
-pub(crate) type SharedClusterManager = Arc<RwLock<ClusterManager>>;
-
-/// ClusterManager knows about all clusters and endpoints.
-pub(crate) struct ClusterManager {
+/// Knows about all clusters and endpoints.
+pub(crate) struct SharedCluster {
     metrics: Metrics,
     endpoints: Option<Endpoints>,
 }
