@@ -236,7 +236,7 @@ mod tests {
     }
 
     fn upstream_endpoints(endpoints: Vec<Endpoint>) -> UpstreamEndpoints {
-        Endpoints::new(endpoints).unwrap().into()
+        Endpoints::new(endpoints).into()
     }
 
     #[test]
