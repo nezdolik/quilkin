@@ -9,8 +9,8 @@ Quilkin proxy.
 
 ## Opinionated Agones Implementation
 
-The project has a binary **cmd/controller.go** with a server implementation that runs in [Kubernetes].
-   
+The server can be run by a quilkin commmand name _manage_.
+
 1. Cluster information is retrieved from [Agones] - the server watches for `Allocated`
    [Agones GameServers] and exposes their IP address and Port as [upstream endpoints][upstream-endpoint] to
    any connected Quilkin proxies.
@@ -27,7 +27,7 @@ The project has a binary **cmd/controller.go** with a server implementation that
    > use, the server looks for the port named `default` and picks that as the endpoint's
    > port (otherwise it picks the first port in the port list).
 
-1. Filter chain is configurable on a per-proxy basis. By default an empty filter chain is
+2. Filter chain is configurable on a per-proxy basis. By default an empty filter chain is
    used and from there the filter chain can configured using annotations on the proxy's pod.
    The following annotations are currently supported:
    - **quilkin.dev/debug-packets**: If set to the value `true`, then a `Debug` filter will be
@@ -40,10 +40,10 @@ The project has a binary **cmd/controller.go** with a server implementation that
    - **quilkin.dev/routing-token-prefix-size**: Works exactly the same as `quilkin.dev/routing-token-suffix-size`
      with the difference that the token is a prefix on the packet rather than a suffix.
 
-As an example, the following runs the server against a cluster (using default kubeconfig configuration) where Quilkin pods run in the `quilkin` namespace and game-server pods run in the `gameservers` namespace:
+As an example, the following runs the server with subcommnad _agones_ against a cluster (using default kubeconfig configuration) where Quilkin pods run in the `quilkin` namespace and game-server pods run in the `gameservers` namespace:
 
 ```sh
-go run controller.go -- port=18000 --proxy-namespace=quilkin --game-server-namespace=gameservers
+quilkin manage --port 18000 agones --config-namespace quilkin --gameservers-namespace gameservers
 ```
 
 > A proxy's pod must have a `quilkin.dev/role` annotation set to the value `proxy` in order
@@ -99,17 +99,17 @@ The following metrics are exposed by the management server.
 
 ## Example: File Server Implementation
 
-> The file server binary is primarily an example and mostly suitable for demo purposes.
+> The file server command is primarily an example and mostly suitable for demo purposes.
 > As a result, some configuration options and features might be missing.
 
-**cmd/file/file.go** an implementation that watches a configuration file on disk and
-sends updates to proxies whenever that file changes.
-It can be started with the following command:
+The file implementation that watches a configuration file on disk and sends updates to proxies whenever that file changes.
+It can be started with using subcommnad _file_ as the following:
 ```sh
-go run cmd/file/file.go --config=config.yaml --port=18000
+quilkin manage --port 18000 file --config-file-path config.yaml
 ```
-After running this command, any proxy that connects to port 18000 will receive updates as
-configured in `config.yaml` file.
+
+After running this command, any proxy that connects to port 18000 will receive updates as configured in `config.yaml` file.
+
 The configuration file schema is:
 ```yaml
 # clusters contain a list of clusters.

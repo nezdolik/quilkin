@@ -27,10 +27,11 @@ pub use address::EndpointAddress;
 type EndpointMetadata = crate::metadata::MetadataView<Metadata>;
 
 /// A destination endpoint with any associated metadata.
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Eq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Eq, schemars::JsonSchema)]
 #[non_exhaustive]
 #[serde(deny_unknown_fields)]
 pub struct Endpoint {
+    #[schemars(with = "String")]
     pub address: EndpointAddress,
     #[serde(default)]
     pub metadata: EndpointMetadata,
@@ -91,6 +92,12 @@ impl From<Endpoint> for crate::xds::config::endpoint::v3::LbEndpoint {
     }
 }
 
+impl std::cmp::PartialEq<EndpointAddress> for Endpoint {
+    fn eq(&self, rhs: &EndpointAddress) -> bool {
+        self.address == *rhs
+    }
+}
+
 /// Represents the set of all known upstream endpoints.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Endpoints(Arc<Vec<Endpoint>>);
@@ -106,9 +113,15 @@ impl Endpoints {
     /// Returns an [`Endpoints`] backed by the provided list of endpoints, if
     /// the provided list is not empty.
     pub fn try_new(endpoints: Vec<Endpoint>) -> Option<Self> {
+        Self::try_from_arc(Arc::new(endpoints))
+    }
+
+    /// Returns an [`Endpoints`] backed by the provided list of endpoints, if
+    /// the provided list is not empty.
+    pub fn try_from_arc(endpoints: Arc<Vec<Endpoint>>) -> Option<Self> {
         match endpoints.is_empty() {
             true => None,
-            false => Some(Self(Arc::new(endpoints))),
+            false => Some(Self(endpoints)),
         }
     }
 }
@@ -135,10 +148,15 @@ impl std::ops::Deref for Endpoints {
 }
 
 /// Metadata specific to endpoints.
-#[derive(Default, Debug, Deserialize, Serialize, PartialEq, Clone, PartialOrd, Eq)]
+#[derive(
+    Default, Debug, Deserialize, Serialize, PartialEq, Clone, PartialOrd, Eq, schemars::JsonSchema,
+)]
 #[non_exhaustive]
 pub struct Metadata {
-    #[serde(with = "base64_set")]
+    #[serde(
+        serialize_with = "base64_set::serialize",
+        deserialize_with = "base64_set::deserialize"
+    )]
     pub tokens: base64_set::Set,
 }
 

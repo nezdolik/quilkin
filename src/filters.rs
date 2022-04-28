@@ -153,6 +153,18 @@ where
     ) -> Result<Self::Configuration, Error> {
         config.ok_or(Error::MissingConfig(Self::NAME))
     }
+
+    fn to_config(
+        config: impl Into<Option<Self::Configuration>>,
+    ) -> Result<crate::config::Filter, Error> {
+        Ok(crate::config::Filter {
+            name: Self::NAME.into(),
+            config: config
+                .into()
+                .map(|config| serde_json::to_value(&config))
+                .transpose()?,
+        })
+    }
 }
 
 /// Trait for routing and manipulating packets.

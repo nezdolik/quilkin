@@ -173,9 +173,11 @@ impl TryFrom<prost_types::Value> for Value {
 /// Represents a view into the metadata object attached to another object. `T`
 /// represents metadata known to Quilkin under `quilkin.dev` (available under
 /// the [`KEY`] constant.)
-#[derive(Default, Debug, serde::Deserialize, serde::Serialize, PartialEq, Clone, Eq)]
+#[derive(
+    Default, Debug, serde::Deserialize, serde::Serialize, PartialEq, Clone, Eq, schemars::JsonSchema,
+)]
 #[non_exhaustive]
-pub struct MetadataView<T> {
+pub struct MetadataView<T: Default> {
     /// Known Quilkin metadata.
     #[serde(default, rename = "quilkin.dev")]
     pub known: T,
@@ -184,7 +186,7 @@ pub struct MetadataView<T> {
     pub unknown: serde_json::Map<String, serde_json::Value>,
 }
 
-impl<T> MetadataView<T> {
+impl<T: Default> MetadataView<T> {
     pub fn with_unknown(
         known: impl Into<T>,
         unknown: serde_json::Map<String, serde_json::Value>,
@@ -211,7 +213,7 @@ where
     }
 }
 
-impl<T: Into<prost_types::Struct>> From<MetadataView<T>> for ProtoMetadata {
+impl<T: Into<prost_types::Struct> + Default> From<MetadataView<T>> for ProtoMetadata {
     fn from(metadata: MetadataView<T>) -> Self {
         let mut filter_metadata = HashMap::new();
         filter_metadata.insert(String::from("quilkin.dev"), metadata.known.into());

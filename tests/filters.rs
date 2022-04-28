@@ -26,6 +26,7 @@ use quilkin::{
 #[tokio::test]
 async fn test_filter() {
     let mut t = TestHelper::default();
+    load_test_filters();
 
     // create an echo server as an endpoint.
     let echo = t.run_echo_server().await;
@@ -43,7 +44,6 @@ async fn test_filter() {
         .unwrap();
 
     // Run server proxy.
-    load_test_filters();
     t.run_server_with_config(server_config);
 
     // create a local client

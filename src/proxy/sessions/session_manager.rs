@@ -119,7 +119,6 @@ mod tests {
 
     use crate::{
         endpoint::{Endpoint, EndpointAddress},
-        filters::SharedFilterChain,
         proxy::{
             server::metrics::Metrics as ProxyMetrics,
             sessions::{
@@ -162,7 +161,7 @@ mod tests {
             let session_args = SessionArgs {
                 metrics: Metrics::new().unwrap(),
                 proxy_metrics: ProxyMetrics::new().unwrap(),
-                filter_chain: SharedFilterChain::empty(),
+                config: <_>::default(),
                 source: from,
                 dest: endpoint.clone(),
                 sender: send,
@@ -216,7 +215,7 @@ mod tests {
             let session_args = SessionArgs {
                 metrics: Metrics::new().unwrap(),
                 proxy_metrics: ProxyMetrics::new().unwrap(),
-                filter_chain: SharedFilterChain::empty(),
+                config: <_>::default(),
                 source: from,
                 dest: endpoint.clone(),
                 sender: send,

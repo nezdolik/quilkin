@@ -14,16 +14,79 @@
  * limitations under the License.
  */
 
-mod metrics;
-mod shared;
-
 use std::collections::HashMap;
 
-use crate::endpoint::Endpoint;
-
-pub(crate) use shared::SharedCluster;
+use crate::{
+    endpoint::{Endpoint, EndpointAddress},
+    metadata::MetadataView,
+    xds::config::endpoint::v3::lb_endpoint,
+};
 
 pub type ClusterLocalities = HashMap<Option<Locality>, LocalityEndpoints>;
+
+impl TryFrom<crate::xds::config::endpoint::v3::ClusterLoadAssignment> for ClusterLocalities {
+    type Error = eyre::Error;
+
+    fn try_from(
+        mut cla: crate::xds::config::endpoint::v3::ClusterLoadAssignment,
+    ) -> Result<Self, Self::Error> {
+        let mut existing_endpoints = HashMap::new();
+
+        for lb_locality in cla.endpoints {
+            let locality = lb_locality.locality.map(|locality| Locality {
+                region: locality.region,
+                zone: locality.zone,
+                sub_zone: locality.sub_zone,
+            });
+
+            // Extract components of the endpoint that we care about.
+            let mut endpoints = vec![];
+            for (host_identifier, metadata) in
+                lb_locality
+                    .lb_endpoints
+                    .into_iter()
+                    .filter_map(|lb_endpoint| {
+                        let metadata = lb_endpoint.metadata;
+                        lb_endpoint
+                            .host_identifier
+                            .map(|host_identifier| (host_identifier, metadata))
+                    })
+            {
+                let endpoint = match host_identifier {
+                    lb_endpoint::HostIdentifier::Endpoint(endpoint) => Ok(endpoint),
+                    lb_endpoint::HostIdentifier::EndpointName(name_reference) => {
+                        match cla.named_endpoints.remove(&name_reference) {
+                            Some(endpoint) => Ok(endpoint),
+                            None => Err(eyre::eyre!(
+                                "no endpoint found name reference {}",
+                                name_reference
+                            )),
+                        }
+                    }
+                }?;
+
+                // Extract the endpoint's address.
+                let address: EndpointAddress = endpoint
+                    .address
+                    .and_then(|address| address.address)
+                    .ok_or_else(|| eyre::eyre!("No address provided."))?
+                    .try_into()?;
+
+                endpoints.push(Endpoint::with_metadata(
+                    address,
+                    metadata
+                        .map(MetadataView::try_from)
+                        .transpose()?
+                        .unwrap_or_default(),
+                ));
+            }
+
+            existing_endpoints.insert(locality, LocalityEndpoints { endpoints });
+        }
+
+        Ok(existing_endpoints)
+    }
+}
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct Locality {
@@ -42,29 +105,9 @@ pub struct Cluster {
     pub localities: ClusterLocalities,
 }
 
-impl Cluster {
-    pub fn new_static_cluster(endpoints: Vec<Endpoint>) -> Self {
-        let endpoints = LocalityEndpoints { endpoints };
-
-        Self {
-            localities: [(None, endpoints)].into_iter().collect(),
-        }
-    }
-
-    pub fn endpoints(&self) -> impl Iterator<Item = &Endpoint> + '_ {
-        self.localities.values().flat_map(|l| l.endpoints.iter())
-    }
-}
-
 /// Represents a full snapshot of all clusters.
 #[derive(Clone, Debug, Default)]
 pub struct ClusterMap(HashMap<String, Cluster>);
-
-impl ClusterMap {
-    pub fn endpoints(&self) -> impl Iterator<Item = &Endpoint> + '_ {
-        self.0.values().flat_map(|cluster| cluster.endpoints())
-    }
-}
 
 impl From<HashMap<String, Cluster>> for ClusterMap {
     fn from(value: HashMap<String, Cluster>) -> Self {

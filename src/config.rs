@@ -20,14 +20,17 @@ use std::{net::SocketAddr, sync::Arc};
 
 use arc_swap::ArcSwap;
 use base64_serde::base64_serde_type;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 mod builder;
 mod config_type;
 mod error;
+mod metrics;
 
-use crate::endpoint::Endpoint;
+use crate::{cluster::ClusterLocalities, endpoint::Endpoint, xds::Resource};
+use metrics::Metrics;
 
 pub use self::{builder::Builder, config_type::ConfigType, error::ValidationError};
 
@@ -38,21 +41,26 @@ base64_serde_type!(Base64Standard, base64::STANDARD);
 pub(crate) const LOG_SAMPLING_RATE: u64 = 1000;
 
 /// Config is the configuration of a proxy
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct Config {
     #[serde(default)]
     pub admin: Option<Admin>,
+    #[schemars(with = "Vec::<Endpoint>")]
     #[serde(default)]
     pub endpoints: Arc<ArcSwap<Vec<Endpoint>>>,
     #[serde(default)]
-    pub filters: Arc<ArcSwap<Vec<Filter>>>,
+    pub filters: crate::filters::SharedFilterChain,
     #[serde(default)]
+    #[schemars(with = "Vec::<ManagementServer>")]
     pub management_servers: Arc<ArcSwap<Vec<ManagementServer>>>,
     #[serde(default)]
     pub proxy: Proxy,
     pub version: Version,
+
+    #[serde(default, skip)]
+    metrics: Metrics,
 }
 
 impl Config {
@@ -65,15 +73,86 @@ impl Config {
     pub fn from_reader<R: std::io::Read>(input: R) -> Result<Self, serde_yaml::Error> {
         serde_yaml::from_reader(input)
     }
+
+    #[tracing::instrument(skip_all, fields(response = response.type_url()))]
+    pub fn apply(&self, response: &Resource) -> crate::Result<()> {
+        match response {
+            Resource::Endpoint(cla) => {
+                let cluster = ClusterLocalities::try_from(cla.clone())?;
+                let endpoints = cluster
+                    .into_values()
+                    .flat_map(|locality| locality.endpoints)
+                    .collect::<Vec<_>>();
+
+                tracing::info!(endpoints = ?endpoints.iter().map(|endpoint| endpoint.address.clone()).collect::<Vec<_>>(), "new endpoints");
+
+                self.endpoints.store(Arc::new(endpoints));
+            }
+            Resource::Listener(listener) => {
+                let chain = listener
+                    .filter_chains
+                    .get(0)
+                    .map(|chain| chain.filters.clone())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(Filter::try_from)
+                    .collect::<Result<Vec<_>, _>>()?;
+                self.filters.store(&chain)?;
+                let chain = listener
+                    .filter_chains
+                    .get(0)
+                    .map(|chain| chain.filters.clone())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(Filter::try_from)
+                    .collect::<Result<Vec<_>, _>>()?;
+                self.filters.store(&chain)?;
+            }
+            Resource::Cluster(cluster) => {
+                if let Some(cluster) = cluster
+                    .load_assignment
+                    .clone()
+                    .map(ClusterLocalities::try_from)
+                    .transpose()?
+                {
+                    let endpoints = cluster
+                        .into_values()
+                        .flat_map(|locality| locality.endpoints)
+                        .collect::<Vec<_>>();
+                    tracing::info!(endpoints = ?endpoints.iter().map(|endpoint| endpoint.address.clone()).collect::<Vec<_>>(), "new endpoints");
+                    self.endpoints.store(Arc::new(endpoints));
+                }
+            }
+        }
+
+        self.apply_metrics();
+
+        Ok(())
+    }
+
+    fn apply_metrics(&self) {
+        let endpoints = self.endpoints.load();
+
+        self.metrics
+            .active_clusters
+            .set(!endpoints.is_empty() as i64);
+        self.metrics.active_endpoints.set(endpoints.len() as i64);
+    }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub enum Version {
     #[serde(rename = "v1alpha1")]
     V1Alpha1,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+impl Default for Version {
+    fn default() -> Self {
+        Self::V1Alpha1
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Proxy {
     #[serde(default = "default_proxy_id")]
@@ -105,7 +184,7 @@ impl Default for Proxy {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Admin {
     pub address: SocketAddr,
@@ -119,14 +198,14 @@ impl Default for Admin {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManagementServer {
     pub address: String,
 }
 
 /// Filter is the configuration for a single filter
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Filter {
     pub name: String,
@@ -190,7 +269,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::{endpoint::Metadata, filters::StaticFilter};
+    use crate::endpoint::Metadata;
 
     fn parse_config(yaml: &str) -> Config {
         Config::from_reader(yaml.as_bytes()).unwrap()
@@ -231,47 +310,6 @@ mod tests {
 
         assert_eq!(config.proxy.port, 7000);
         assert!(config.proxy.id.len() > 1);
-    }
-
-    #[test]
-    fn parse_filter_config() {
-        let config: Config = serde_json::from_value(json!({
-            "version": "v1alpha1",
-            "proxy": {
-                "id": "client-proxy",
-                "port": 7000 // the port to receive traffic to locally
-            },
-            "endpoints": [{
-                "address": "127.0.0.1:7001",
-            }],
-            "filters": [{
-                "name": crate::filters::LocalRateLimit::NAME,
-                "config": {
-                    "map": "of arbitrary key value pairs",
-                    "could": [
-                        "also",
-                        "be",
-                        27u8,
-                        true,
-                    ],
-                }
-            }],
-        }))
-        .unwrap();
-
-        let filter = config.filters.load().get(0).cloned().unwrap();
-        assert_eq!(crate::filters::LocalRateLimit::NAME, filter.name);
-        let filter_config = filter.config.as_ref().unwrap();
-        assert_eq!(
-            "of arbitrary key value pairs",
-            filter_config.get("map").unwrap()
-        );
-
-        let could = filter_config.get("could").unwrap().as_array().unwrap();
-        assert_eq!("also", could.get(0).unwrap().as_str().unwrap());
-        assert_eq!("be", could.get(1).unwrap().as_str().unwrap());
-        assert_eq!(27, could.get(2).unwrap().as_i64().unwrap());
-        assert!(could.get(3).unwrap().as_bool().unwrap());
     }
 
     #[test]
@@ -357,18 +395,6 @@ endpoints:
     fn parse_management_servers() {
         let config: Config = serde_json::from_value(json!({
             "version": "v1alpha1",
-            "filters": [{
-                "name": crate::filters::LocalRateLimit::NAME,
-                "config": {
-                    "map": "of arbitrary key value pairs",
-                    "could":[
-                        "also",
-                        "be",
-                        27u8,
-                        true,
-                    ],
-                }
-            }],
             "management_servers": [
                 { "address": "127.0.0.1:25999" },
                 { "address": "127.0.0.1:30000" },

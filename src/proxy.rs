@@ -14,13 +14,10 @@
  * limitations under the License.
  */
 
-pub(crate) use admin::Admin;
 pub(crate) use health::Health;
 pub use server::Server;
 pub use sessions::SessionKey;
 
-mod admin;
-mod config_dump;
 mod health;
 mod server;
 mod sessions;

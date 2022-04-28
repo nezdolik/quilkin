@@ -29,10 +29,11 @@ use tokio::{
     sync::{mpsc, watch},
     time::{Duration, Instant},
 };
+use tracing::Instrument;
 
 use crate::{
     endpoint::{Endpoint, EndpointAddress},
-    filters::{Filter, SharedFilterChain, WriteContext},
+    filters::{Filter, WriteContext},
     proxy::{
         server::metrics::Metrics as ProxyMetrics,
         sessions::{error::Error, metrics::Metrics},
@@ -44,9 +45,9 @@ type Result<T> = std::result::Result<T, Error>;
 
 /// Session encapsulates a UDP stream session
 pub struct Session {
+    config: Arc<crate::Config>,
     metrics: Metrics,
     proxy_metrics: ProxyMetrics,
-    filter_chain: SharedFilterChain,
     /// created_at is time at which the session was created
     created_at: Instant,
     socket: Arc<UdpSocket>,
@@ -76,7 +77,7 @@ impl From<(EndpointAddress, EndpointAddress)> for SessionKey {
 /// ReceivedPacketContext contains state needed to process a received packet.
 struct ReceivedPacketContext<'a> {
     packet: &'a [u8],
-    filter_chain: SharedFilterChain,
+    config: Arc<crate::Config>,
     endpoint: &'a Endpoint,
     source: EndpointAddress,
     dest: EndpointAddress,
@@ -114,9 +115,9 @@ impl UpstreamPacket {
 }
 
 pub struct SessionArgs {
+    pub config: Arc<crate::Config>,
     pub metrics: Metrics,
     pub proxy_metrics: ProxyMetrics,
-    pub filter_chain: SharedFilterChain,
     pub source: EndpointAddress,
     pub dest: Endpoint,
     pub sender: mpsc::Sender<UpstreamPacket>,
@@ -133,18 +134,24 @@ impl SessionArgs {
 
 impl Session {
     /// internal constructor for a Session from SessionArgs
+    #[tracing::instrument(skip_all)]
     async fn new(args: SessionArgs) -> Result<Self> {
         let addr = (std::net::Ipv4Addr::UNSPECIFIED, 0);
-        let socket = Arc::new(UdpSocket::bind(addr).await.map_err(Error::BindUdpSocket)?);
+        let socket = Arc::new(
+            UdpSocket::bind(addr)
+                .instrument(tracing::trace_span!("Binding new session"))
+                .await
+                .map_err(Error::BindUdpSocket)?,
+        );
         let (shutdown_tx, shutdown_rx) = watch::channel::<()>(());
 
         let expiration = Arc::new(AtomicU64::new(0));
         Self::do_update_expiration(&expiration, args.ttl)?;
 
         let s = Session {
+            config: args.config,
             metrics: args.metrics,
             proxy_metrics: args.proxy_metrics,
-            filter_chain: args.filter_chain,
             socket: socket.clone(),
             source: args.source,
             dest: args.dest,
@@ -171,7 +178,7 @@ impl Session {
     ) {
         let source = self.source.clone();
         let expiration = self.expiration.clone();
-        let filter_chain = self.filter_chain.clone();
+        let config = self.config.clone();
         let endpoint = self.dest.clone();
         let metrics = self.metrics.clone();
         let proxy_metrics = self.proxy_metrics.clone();
@@ -196,7 +203,7 @@ impl Session {
                                     &expiration,
                                     ttl,
                                     ReceivedPacketContext {
-                                        filter_chain: filter_chain.clone(),
+                                        config: config.clone(),
                                         packet: &buf[..size],
                                         endpoint: &endpoint,
                                         source: recv_addr.into(),
@@ -238,7 +245,7 @@ impl Session {
     ) {
         let ReceivedPacketContext {
             packet,
-            filter_chain,
+            config,
             endpoint,
             source: from,
             dest: to,
@@ -251,7 +258,8 @@ impl Session {
             tracing::warn!(%error, "Error updating session expiration")
         }
 
-        let write_result: futures::future::OptionFuture<_> = filter_chain
+        let write_result: futures::future::OptionFuture<_> = config
+            .filters
             .write(WriteContext::new(
                 endpoint,
                 from,
@@ -359,10 +367,9 @@ mod tests {
     use prometheus::{Histogram, HistogramOpts};
     use tokio::time::timeout;
 
-    use crate::test_utils::{new_test_chain, TestHelper};
+    use crate::test_utils::{new_test_config, TestHelper};
 
     use crate::endpoint::{Endpoint, EndpointAddress};
-    use crate::filters::SharedFilterChain;
     use crate::proxy::sessions::session::{ReceivedPacketContext, SessionArgs};
     use tokio::sync::mpsc;
 
@@ -377,7 +384,7 @@ mod tests {
         let sess = Session::new(SessionArgs {
             metrics: Metrics::new().unwrap(),
             proxy_metrics: ProxyMetrics::new().unwrap(),
-            filter_chain: SharedFilterChain::empty(),
+            config: <_>::default(),
             source: addr.clone(),
             dest: endpoint,
             sender: send_packet,
@@ -426,7 +433,7 @@ mod tests {
         let session = Session::new(SessionArgs {
             metrics: Metrics::new().unwrap(),
             proxy_metrics: ProxyMetrics::new().unwrap(),
-            filter_chain: SharedFilterChain::empty(),
+            config: <_>::default(),
             source: addr,
             dest: endpoint.clone(),
             sender,
@@ -461,8 +468,8 @@ mod tests {
             &expiration,
             Duration::from_secs(10),
             ReceivedPacketContext {
+                config: <_>::default(),
                 packet: msg.as_bytes(),
-                filter_chain: crate::filters::SharedFilterChain::empty(),
                 endpoint: &endpoint,
                 source: endpoint.address.clone(),
                 dest: dest.clone(),
@@ -487,14 +494,14 @@ mod tests {
         ));
         let initial_expiration = expiration.load(Ordering::Relaxed);
         // add filter
-        let filter_chain = new_test_chain();
+        let config = Arc::new(new_test_config());
         Session::process_recv_packet(
             &Metrics::new().unwrap(),
             &mut sender,
             &expiration,
             Duration::from_secs(10),
             ReceivedPacketContext {
-                filter_chain,
+                config,
                 packet: msg.as_bytes(),
                 endpoint: &endpoint,
                 source: endpoint.address.clone(),
@@ -527,7 +534,7 @@ mod tests {
         let session = Session::new(SessionArgs {
             metrics: Metrics::new().unwrap(),
             proxy_metrics: ProxyMetrics::new().unwrap(),
-            filter_chain: SharedFilterChain::empty(),
+            config: <_>::default(),
             source: addr,
             dest: endpoint,
             sender: send_packet,
@@ -550,7 +557,7 @@ mod tests {
         let session = Session::new(SessionArgs {
             metrics: Metrics::new().unwrap(),
             proxy_metrics: ProxyMetrics::new().unwrap(),
-            filter_chain: SharedFilterChain::empty(),
+            config: <_>::default(),
             source: addr.clone(),
             dest: Endpoint::new(addr),
             sender,
@@ -574,7 +581,7 @@ mod tests {
         let session = Session::new(SessionArgs {
             metrics: Metrics::new().unwrap(),
             proxy_metrics: ProxyMetrics::new().unwrap(),
-            filter_chain: SharedFilterChain::empty(),
+            config: <_>::default(),
             source: addr.clone(),
             dest: Endpoint::new(addr),
             sender: send_packet,

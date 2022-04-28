@@ -51,8 +51,11 @@ impl Builder {
         Builder { port, ..self }
     }
 
-    pub fn filters(self, filters: Vec<Filter>) -> Self {
-        Self { filters, ..self }
+    pub fn filters(self, filters: impl Into<Vec<Filter>>) -> Self {
+        Self {
+            filters: filters.into(),
+            ..self
+        }
     }
 
     pub fn endpoints(self, endpoints: Vec<Endpoint>) -> Self {
@@ -120,8 +123,9 @@ impl TryFrom<Builder> for Config {
             },
             admin: builder.admin,
             endpoints: Arc::from(ArcSwap::new(Arc::from(builder.endpoints))),
-            filters: Arc::from(ArcSwap::new(Arc::from(builder.filters))),
+            filters: crate::filters::SharedFilterChain::try_from(builder.filters)?,
             management_servers: Arc::from(ArcSwap::new(Arc::from(builder.management_servers))),
+            metrics: <_>::default(),
         })
     }
 }

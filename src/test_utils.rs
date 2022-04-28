@@ -16,6 +16,7 @@
 
 /// Common utilities for testing
 use std::{
+    collections::HashMap,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     str::from_utf8,
     sync::Arc,
@@ -29,6 +30,7 @@ use crate::{
     endpoint::{Endpoint, EndpointAddress, Endpoints},
     filters::{prelude::*, FilterRegistry},
     metadata::Value,
+    xds::{service::discovery::v3::DiscoveryResponse, DiscoveryServiceProvider, ResourceType},
 };
 
 // TestFilter is useful for testing that commands are executing filters appropriately.
@@ -287,16 +289,88 @@ pub fn ep(id: u8) -> Endpoint {
     }
 }
 
-pub fn new_test_chain() -> crate::filters::SharedFilterChain {
-    <_>::try_from([crate::config::Filter {
-        name: "TestFilter".into(),
-        config: None,
-    }])
-    .unwrap()
+pub fn new_test_config() -> crate::Config {
+    crate::Config::builder()
+        .filters(vec![crate::config::Filter {
+            name: "TestFilter".into(),
+            config: None,
+        }])
+        .build()
+        .unwrap()
 }
 
 pub fn load_test_filters() {
     FilterRegistry::register([TestFilter::factory()]);
+}
+
+pub struct TestProvider {
+    resources: HashMap<ResourceType, DiscoveryResponse>,
+}
+
+impl TestProvider {
+    pub fn new(resources: HashMap<ResourceType, DiscoveryResponse>) -> Self {
+        Self { resources }
+    }
+}
+
+#[tonic::async_trait]
+impl DiscoveryServiceProvider for TestProvider {
+    async fn discovery_request(
+        &self,
+        _node_id: &str,
+        _version: u64,
+        kind: ResourceType,
+        _names: &[String],
+    ) -> Result<DiscoveryResponse, tonic::Status> {
+        self.resources
+            .get(&kind)
+            .cloned()
+            .ok_or_else(|| tonic::Status::not_found("No resource supplied"))
+    }
+}
+
+pub struct MessageServiceProvider {
+    resources: Arc<tokio::sync::RwLock<HashMap<ResourceType, DiscoveryResponse>>>,
+}
+
+impl MessageServiceProvider {
+    pub fn new() -> (
+        Self,
+        mpsc::UnboundedSender<(ResourceType, DiscoveryResponse)>,
+    ) {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let resources = Arc::<tokio::sync::RwLock<HashMap<_, _>>>::default();
+
+        tokio::spawn({
+            let resources = resources.clone();
+            async move {
+                loop {
+                    let (kind, response) = rx.recv().await.unwrap();
+                    resources.write().await.insert(kind, response);
+                }
+            }
+        });
+
+        (Self { resources }, tx)
+    }
+}
+
+#[tonic::async_trait]
+impl DiscoveryServiceProvider for MessageServiceProvider {
+    async fn discovery_request(
+        &self,
+        _node_id: &str,
+        _version: u64,
+        kind: ResourceType,
+        _names: &[String],
+    ) -> Result<DiscoveryResponse, tonic::Status> {
+        self.resources
+            .read()
+            .await
+            .get(&kind)
+            .cloned()
+            .ok_or_else(|| tonic::Status::not_found("No resource supplied"))
+    }
 }
 
 #[cfg(test)]
